@@ -22,6 +22,7 @@ HERE = Path(__file__).parent
 WORK = HERE / "work"
 TEMPLATES = HERE / "templates"
 DATA = HERE / "data"
+SETTINGS_FILE = DATA / "account_settings.json"
 CAM_FILE = DATA / "cam_defaults.json"
 ALLOWED_EXT = {".mp4", ".mov", ".mkv", ".webm"}
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
@@ -62,24 +63,45 @@ def account_layout_path(account):
     return p
 
 
-def valid_box(box):
+def _read_json(path):
     try:
-        x, y, w, h = [float(v) for v in box]
-    except (TypeError, ValueError):
-        return None
-    if not (0 <= x <= 1 and 0 <= y <= 1 and 0.02 <= w <= 1 and 0.02 <= h <= 1):
-        return None
-    if x + w > 1.0001 or y + h > 1.0001:
-        return None
-    return [x, y, w, h]
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
-def cam_default(account, cfg):
-    try:
-        saved = valid_box(json.loads(CAM_FILE.read_text()).get(account))
-    except (OSError, ValueError, AttributeError):
-        saved = None
-    return saved or cfg["cam_crop"]
+SETTING_KEYS = {
+    "cam_crop": ("cam", lambda cfg: cfg["cam_crop"]),
+    "game_crop": ("game", lambda cfg: cfg["game_crop"]),
+    "title_height": ("title_height", lambda cfg: cfg["title_height"]),
+    "font_size": ("font_size", lambda cfg: cfg["title"]["max_size"]),
+}
+
+
+REQUEST_TO_KEY = {kw: key for key, (kw, _) in SETTING_KEYS.items()}
+
+
+def factory_settings(cfg):
+    return {"cam_crop": cfg["cam_crop"], "game_crop": cfg["game_crop"],
+            "title_height": cfg["title_zone"][3], "font_size": cfg["title"]["max_size"]}
+
+
+def account_settings(account, cfg):
+    """Valores de la cuenta: los guardados (si son válidos) o los de la plantilla."""
+    eff = factory_settings(cfg)
+    legacy = clipmaker.valid_box(_read_json(CAM_FILE).get(account) or [])
+    if legacy:
+        eff["cam_crop"] = legacy
+    saved = _read_json(SETTINGS_FILE).get(account)
+    if isinstance(saved, dict):
+        for key, (kw, getter) in SETTING_KEYS.items():
+            if key in saved:
+                try:
+                    eff[key] = getter(clipmaker.apply_overrides(cfg, **{kw: saved[key]}))
+                except ValueError:
+                    pass
+    return eff
 
 
 @app.get("/")
@@ -92,7 +114,8 @@ def api_accounts():
     out = {}
     for name, acc in captions.ACCOUNTS.items():
         cfg = json.loads(account_layout_path(name).read_text())
-        out[name] = {"handle": acc["handle"], "people": sorted(acc["people"]), "cam_crop": cam_default(name, cfg)}
+        out[name] = {"handle": acc["handle"], "people": sorted(acc["people"]), **account_settings(name, cfg),
+                     "factory": factory_settings(cfg)}
     return jsonify(out)
 
 
@@ -205,7 +228,6 @@ def prepare_render(data):
         return None, (jsonify(error=f"El título es demasiado largo (máx {MAX_TITLE} caracteres)"), 400)
     account = data.get("account")
     cfg = json.loads(account_layout_path(account).read_text())
-    cfg["cam_crop"] = cam_default(account, cfg)
     preset = data.get("preset", "cam_game")
     if preset not in clipmaker.PRESETS:
         return None, (jsonify(error=f"Variación desconocida: {preset}"), 400)
@@ -221,11 +243,17 @@ def prepare_render(data):
     if audio == "b" and not clip_b:
         return None, (jsonify(error="Para usar el audio del video B primero súbelo"), 400)
     no_cam = bool(data.get("no_cam")) and spec["uses_cam"]
+    eff = account_settings(account, cfg)
+    ov = dict(cam=eff["cam_crop"], game=eff["game_crop"], title_height=eff["title_height"], font_size=eff["font_size"])
     if spec["uses_cam"] and not no_cam and data.get("cam") is not None:
-        box = valid_box(data["cam"])
-        if box is None:
-            return None, (jsonify(error="Recuadro de cámara inválido"), 400)
-        cfg["cam_crop"] = box
+        ov["cam"] = data["cam"]
+    for key in ("game", "title_height", "font_size"):
+        if data.get(key) is not None:
+            ov[key] = data[key]
+    try:
+        cfg = clipmaker.apply_overrides(cfg, **ov)
+    except ValueError as e:
+        return None, (jsonify(error=str(e)), 400)
     people = [str(p) for p in data.get("people", []) if isinstance(p, str)][:10]
     return dict(d=d, title=title, cfg=cfg, preset=preset, clip_b=clip_b, image=image, audio=audio, no_cam=no_cam,
                 src=next(p for p in d.iterdir() if p.stem == "source"), out=d / "out.mp4",
@@ -346,25 +374,55 @@ def api_update_apply():
     return jsonify(result)
 
 
-@app.post("/api/cam-default")
-def api_cam_default():
+PREVIEW_LOCK = threading.Lock()
+
+
+@app.post("/api/preview")
+def api_preview():
     data = request.get_json(silent=True) or {}
-    account_layout_path(data.get("account"))
-    box = valid_box(data.get("cam"))
-    if box is None:
-        return jsonify(error="Recuadro de cámara inválido"), 400
-    try:
-        saved = json.loads(CAM_FILE.read_text())
-        if not isinstance(saved, dict):
-            saved = {}
-    except (OSError, ValueError):
-        saved = {}
-    saved[data["account"]] = box
-    CAM_FILE.parent.mkdir(exist_ok=True)
-    tmp = CAM_FILE.with_suffix(".tmp")
-    tmp.write_text(json.dumps(saved, indent=2))
-    tmp.replace(CAM_FILE)
-    return jsonify(ok=True)
+    if not " ".join(str(data.get("title", "")).split()):
+        data = dict(data, title="Tu título aquí")
+    p, err = prepare_render(data)
+    if err:
+        return err
+    still = p["d"] / "preview.png"
+    with PREVIEW_LOCK:
+        try:
+            clipmaker.build(p["src"], p["title"], p["cfg"], still, p["no_cam"], p["preset"], p["clip_b"],
+                            p["image"], p["audio"], still=True)
+        except subprocess.CalledProcessError:
+            return jsonify(error="No pude generar la vista previa"), 500
+    resp = send_from_directory(p["d"], "preview.png", mimetype="image/png")
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.post("/api/account-defaults")
+def api_account_defaults():
+    data = request.get_json(silent=True) or {}
+    account = data.get("account")
+    cfg = json.loads(account_layout_path(account).read_text())
+    saved_all = _read_json(SETTINGS_FILE)
+    if data.get("reset"):
+        saved_all.pop(account, None)
+    else:
+        given = {req: data[req] for req in REQUEST_TO_KEY if data.get(req) is not None}
+        if not given:
+            return jsonify(error="No hay nada que guardar"), 400
+        try:
+            ov = clipmaker.apply_overrides(cfg, **given)
+        except ValueError as e:
+            return jsonify(error=str(e)), 400
+        entry = saved_all.get(account) if isinstance(saved_all.get(account), dict) else {}
+        for req in given:
+            key = REQUEST_TO_KEY[req]
+            entry[key] = SETTING_KEYS[key][1](ov)
+        saved_all[account] = entry
+    SETTINGS_FILE.parent.mkdir(exist_ok=True)
+    tmp = SETTINGS_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(saved_all, indent=2))
+    tmp.replace(SETTINGS_FILE)
+    return jsonify(ok=True, settings=account_settings(account, cfg))
 
 
 if __name__ == "__main__":

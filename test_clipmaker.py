@@ -96,6 +96,19 @@ CASES = [
     case("v_blur_vertical", dict(size="1080x1920"), args=["--preset", "clip_blur"]),
     case("v_blur_sin_audio", dict(audio=False), args=["--preset", "clip_blur"], audio=False),
     case("v_blur_titulo_largo", title="Titulo larguisimo para ver como se comporta la variacion con fondo difuminado cuando hay mucho texto que partir", args=["--preset", "clip_blur"]),
+    # controles: franja, letra y recorte de gameplay
+    case("ctl_franja_160_letra_60", args=["--title-height", "160", "--font-size", "60"]),
+    case("ctl_franja_560_letra_200", args=["--title-height", "560", "--font-size", "200"]),
+    case("ctl_franja_120_letra_30", args=["--title-height", "120", "--font-size", "30"]),
+    case("ctl_titulo_largo_franja_120", title="Titulo muy largo que no cabe en una franja tan baja y debe achicarse solo para entrar completo", args=["--title-height", "120"]),
+    case("ctl_titulo_largo_letra_200", title="Otro titulo largo con letra enorme que tiene que encoger para caber", args=["--font-size", "200"]),
+    case("ctl_game_recortado", args=["--game", "0,0.3,0.7,0.7"]),
+    case("ctl_game_recortado_clip_image", args=["--preset", "clip_image", "--image", "{img}", "--game", "0.1,0.1,0.5,0.5"]),
+    case("ctl_game_en_blur", args=["--preset", "clip_blur", "--game", "0,0,0.6,1", "--title-height", "420", "--font-size", "120"]),
+    case("ctl_game_en_game_cam", args=["--preset", "game_cam", "--game", "0,0,1,0.6", "--cam", "0.6,0.0,0.4,0.4", "--title-height", "200"]),
+    case("ctl_todo_junto_clip_clip", args=["--preset", "clip_clip", "--clip-b", "{b_short}", "--title-height", "480", "--font-size", "150", "--game", "0,0,0.8,0.8"]),
+    case("ctl_marca_franja", args=["--layout", "templates/wganga.json", "--title-height", "200", "--font-size", "70"]),
+    case("ctl_marca_franja_grande", args=["--layout", "templates/gtahispa.json", "--title-height", "520"]),
     case("v_marca_wganga", args=["--layout", "templates/wganga.json", "--preset", "clip_image", "--image", "{img}"]),
     case("v_marca_blur", args=["--layout", "templates/gtahispa.json", "--preset", "clip_blur"]),
 ]
@@ -108,6 +121,14 @@ ERROR_CASES = [
     ("err_imagen_basura", ["--preset", "clip_image", "--image", "{garbage}"], "No pude leer la imagen"),
     ("err_clip_b_basura", ["--preset", "clip_clip", "--clip-b", "{garbage}"], "No pude leer el segundo video"),
     ("err_preset_malo", ["--preset", "no_existe"], "invalid choice"),
+    ("err_franja_baja", ["--title-height", "50"], "entre 120 y 560"),
+    ("err_franja_alta", ["--title-height", "9999"], "entre 120 y 560"),
+    ("err_franja_texto", ["--title-height", "abc"], "invalid float"),
+    ("err_letra_baja", ["--font-size", "5"], "entre 30 y 200"),
+    ("err_letra_alta", ["--font-size", "999"], "entre 30 y 200"),
+    ("err_game_fuera", ["--game", "2,2,2,2"], "Recuadro de gameplay inválido"),
+    ("err_game_basura", ["--game", "x"], "x,y,w,h"),
+    ("err_game_tamano_cero", ["--game", "0.1,0.1,0,0"], "Recuadro de gameplay inválido"),
 ]
 
 
@@ -119,19 +140,25 @@ def probe(path):
             next((s for s in streams if s["codec_type"] == "audio"), None))
 
 
-def title_edge_touched(out, layout_path, preset):
+def title_edge_touched(out, layout_path, preset, title_height=None):
     layout = json.loads(Path(layout_path).read_text())
+    if title_height:
+        layout = clipmaker.apply_overrides(layout, title_height=title_height)
     x, y, w, h = clipmaker.zone_of(layout, preset, "title")
     bg = tuple(int(layout["background_color"][i:i + 2], 16) for i in (1, 3, 5))
     with tempfile.TemporaryDirectory() as td:
         png = Path(td) / "f.png"
         sh("ffmpeg", "-y", "-v", "error", "-ss", "0.3", "-i", out, "-frames:v", "1", png)
         img = Image.open(png).convert("RGB").crop((x, y, x + w, y + h))
+    def texty(px):
+        return min(px) >= 215
+
     for col in list(range(0, 6)) + list(range(w - 6, w)):
-        for row in range(h):
-            p = img.getpixel((col, row))
-            if sum(abs(p[i] - bg[i]) for i in range(3)) > 40:
-                return True
+        if any(texty(img.getpixel((col, row))) for row in range(h)):
+            return True
+    for row in list(range(0, 3)) + list(range(h - 3, h)):
+        if any(texty(img.getpixel((col, row))) for col in range(w)):
+            return True
     return False
 
 
@@ -167,7 +194,7 @@ def run_case(c, td, assets):
     layout_path = option(args, "--layout", str(HERE / "layout.json"))
     preset = option(args, "--preset", "cam_game")
     if clipmaker.PRESETS[preset]["solid_title"] and "templates" not in layout_path \
-            and title_edge_touched(out, layout_path, preset):
+            and title_edge_touched(out, layout_path, preset, float(option(args, "--title-height", 0)) or None):
         problems.append("titulo se sale de los bordes")
     exp = src_kwargs.get("dur", 3)
     got = float(v.get("duration", 0))
@@ -194,6 +221,51 @@ def run_error_case(name, args, expect, td, assets):
     return (expect in text), (f"mensaje esperado '{expect}' no aparece: {text.strip()[-100:]}" if expect not in text else "ok")
 
 
+def effect_tests(td, assets):
+    """Comprueba que los controles cambian de verdad lo que se ve (no solo que no den error)."""
+    results = []
+    layout = json.loads((HERE / "layout.json").read_text())
+    src = td / "effect_src.mp4"
+    make_src(src)
+
+    def still(**ov):
+        cfg = clipmaker.apply_overrides(layout, **ov) if ov else layout
+        out = td / f"still_{abs(hash(json.dumps(ov, sort_keys=True)))}.png"
+        clipmaker.build(str(src), "HOLA", cfg, out, still=True)
+        return Image.open(out).convert("RGB")
+
+    bg = tuple(int(layout["background_color"][i:i + 2], 16) for i in (1, 3, 5))
+
+    def title_pixels(img, y0, y1):
+        return sum(1 for y in range(y0, y1, 2) for x in range(0, 1080, 2) if min(img.getpixel((x, y))) >= 235)
+
+    small, big = still(font_size=40), still(font_size=160)
+    a, b = title_pixels(small, 760, 1080), title_pixels(big, 760, 1080)
+    results.append(("efecto: letra grande tiene mas pixeles de texto que letra chica", b > a * 3, f"{a} vs {b}"))
+
+    low, tall = still(title_height=160), still(title_height=480)
+    zones = lambda T: clipmaker.zone_of(clipmaker.apply_overrides(layout, title_height=T), "cam_game", "title")
+    (_, y_low, _, h_low), (_, y_tall, _, h_tall) = zones(160), zones(480)
+    near = lambda p, q, tol=12: sum(abs(p[i] - q[i]) for i in range(3)) <= tol
+    solid = lambda img, y: near(img.getpixel((5, y)), bg)
+    results.append(("efecto: franja alta ocupa mas alto que la baja", h_tall > h_low * 2, f"{h_low} vs {h_tall}"))
+    results.append(("efecto: la franja baja deja ver la camara donde la alta ya es franja",
+                    not solid(low, y_tall + 10) and solid(tall, y_tall + 10), f"y={y_tall + 10}"))
+    results.append(("efecto: franja pegada a camara y gameplay (sin huecos)",
+                    solid(tall, y_tall) and not solid(tall, y_tall - 3) and not solid(tall, y_tall + h_tall + 3), ""))
+    results.append(("efecto: gameplay recortado cambia la imagen", still(game=[0, 0, 0.5, 0.5]).tobytes() != still().tobytes(), ""))
+    results.append(("efecto: cam distinta cambia la imagen", still(cam=[0.0, 0.5, 0.3, 0.3]).tobytes() != still().tobytes(), ""))
+    wide = still(font_size=200)
+    results.append(("efecto: texto no toca los bordes con letra maxima", not any(min(wide.getpixel((x, y))) >= 235 for x in list(range(0, 4)) + list(range(1076, 1080)) for y in range(760, 1080)), ""))
+
+    # fotograma unico: tamano y velocidad razonables
+    import time as _t
+    t0 = _t.time()
+    im = still(title_height=300)
+    results.append(("still devuelve 1080x1920 en menos de 10 s", im.size == (1080, 1920) and _t.time() - t0 < 10, f"{_t.time() - t0:.1f}s"))
+    return results
+
+
 def main():
     only = sys.argv[1:]
     fails = 0
@@ -214,6 +286,11 @@ def main():
             ok, msg = run_error_case(name, args, expect, td, assets)
             fails += not ok
             print(f"{'PASS' if ok else 'FAIL'}  {name:34s} {msg}")
+    if not only or "efectos" in only:
+        with tempfile.TemporaryDirectory() as td2:
+            for name, ok, msg in effect_tests(Path(td2), {}):
+                fails += not ok
+                print(f"{'PASS' if ok else 'FAIL'}  {name:34s} {msg}")
     print(f"\n{fails} fallos")
     sys.exit(1 if fails else 0)
 

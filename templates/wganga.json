@@ -46,5 +46,6 @@
     "uppercase": true,
     "padding": 48
   },
-  "overlay_clean_png": "templates/wganga_overlay_clean.png"
+  "overlay_clean_png": "templates/wganga_overlay_clean.png",
+  "accent_color": "#ff7a00"
 }

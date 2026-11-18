@@ -62,6 +62,7 @@ def main():
         cfg["background_png"] = f"templates/{bg_path.name}"
         cfg["overlay_png"] = f"templates/{ov_path.name}"
         cfg["overlay_clean_png"] = f"templates/{clean_path.name}"
+        cfg["accent_color"] = brand["accent"]
         cfg["title"] = dict(base["title"])
         (OUT / f"{name}.json").write_text(json.dumps(cfg, indent=2, ensure_ascii=False))
         print(f"OK {name}: {bg_path.name}, {ov_path.name}, {name}.json")

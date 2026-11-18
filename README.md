@@ -11,7 +11,12 @@ Convierte un clip horizontal de stream en un video vertical 1080x1920: **cámara
 Una vez, doble clic en `crear_acceso_directo.bat` (Windows) o ejecuta `./crear_acceso_directo.sh` (Mac/Linux). Aparece "Clipmaker" en el escritorio; al abrirlo arranca la app y se abre el navegador. No muevas la carpeta del proyecto después (si la mueves, vuelve a ejecutarlo).
 
 ## Usar
-1. Arrastra el clip principal. 2. Elige la **variación**: cámara+gameplay, gameplay+cámara, video+imagen, imagen+video, dos videos o video con fondo difuminado. Si la variación lo pide, sube la imagen o el segundo video (si dura menos que el principal, se repite; puedes elegir de cuál sale el audio). 3. Escribe el título, elige la cuenta y marca quién sale. 4. En las variaciones con cámara, dibuja con el ratón el recuadro rojo sobre la cámara del streamer (guárdalo por defecto para esa cuenta si no cambia). 5. **Crear video**, descarga y copia los textos.
+1. Arrastra el clip principal; debajo del cuadro verás el progreso de la subida.
+2. Elige la **variación**: cámara+gameplay, gameplay+cámara, video+imagen, imagen+video, dos videos o video con fondo difuminado. Si la variación lo pide, sube la imagen o el segundo video (si dura menos que el principal, se repite; puedes elegir de cuál sale el audio).
+3. Escribe el título y ajusta el **alto de la franja del título** y el **tamaño de letra** con los deslizadores (si el título no cabe, la letra se achica sola; la cámara y el gameplay ocupan el resto). Elige la cuenta y marca quién sale.
+4. En **Recortes del clip** elige si dibujas la **cámara** (rojo) o el **gameplay** (verde) y arrastra con el ratón sobre la imagen. "Gameplay completo" quita el recorte. "Guardar como valores por defecto" recuerda recortes, franja y letra para esa cuenta; "Restablecer valores de fábrica" los borra.
+5. La **vista previa** de la derecha se actualiza sola con cada cambio (puedes apagarla o pulsar "Actualizar").
+6. **Crear video**, descarga y copia los textos.
 
 Por terminal: `python clipmaker.py clip.mp4 "Título" --layout templates/wganga.json -o salida.mp4`, o `--batch carpeta` (cada `clip.mp4` con su `clip.txt` de título). Variaciones: `--preset clip_image --image foto.jpg`, `--preset clip_clip --clip-b otro.mp4 --audio b`, `--preset clip_blur`; `--list-presets` las muestra todas.
 

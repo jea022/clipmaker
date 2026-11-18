@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Monta un clip horizontal en plantilla vertical con variaciones: camara/gameplay/imagen/segundo video + titulo."""
 import argparse
+import copy
 import json
 import os
 import shutil
@@ -112,7 +113,7 @@ def render_title(text, zone, cfg, out_png):
         fits = len(lines) * line_h <= max_h and all(
             draw.textlength(l, font=font) + 2 * stroke <= max_w for l in lines
         )
-        if fits or size <= t["min_size"]:
+        if fits or size <= 20:
             break
         size -= 4
     y = (zh - len(lines) * line_h) // 2
@@ -189,6 +190,55 @@ PRESETS = {
     },
 }
 AUDIO_CHOICES = ("a", "b", "mute")
+TITLE_HEIGHT_RANGE = (120, 560)
+FONT_SIZE_RANGE = (30, 200)
+MIN_BOX = 0.02
+
+
+def valid_box(box):
+    try:
+        x, y, w, h = [float(v) for v in box]
+    except (TypeError, ValueError):
+        return None
+    if not (0 <= x <= 1 and 0 <= y <= 1 and MIN_BOX <= w <= 1 and MIN_BOX <= h <= 1):
+        return None
+    if x + w > 1.0001 or y + h > 1.0001:
+        return None
+    return [x, y, w, h]
+
+
+def _number(value, lo, hi, what):
+    if isinstance(value, bool) or value is None:
+        raise ValueError(f"{what} no es un número")
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} no es un número")
+    if not lo <= v <= hi:
+        raise ValueError(f"{what} debe estar entre {lo} y {hi}")
+    return int(round(v))
+
+
+def apply_overrides(cfg, cam=None, game=None, title_height=None, font_size=None):
+    """Devuelve una copia de cfg con recortes, alto de franja y tamano de letra personalizados."""
+    cfg = copy.deepcopy(cfg)
+    if cam is not None:
+        box = valid_box(cam)
+        if box is None:
+            raise ValueError("Recuadro de cámara inválido")
+        cfg["cam_crop"] = box
+    if game is not None:
+        box = valid_box(game)
+        if box is None:
+            raise ValueError("Recuadro de gameplay inválido")
+        cfg["game_crop"] = box
+    if title_height is not None:
+        cfg["title_height"] = _number(title_height, *TITLE_HEIGHT_RANGE, "El alto de la franja del título")
+    if font_size is not None:
+        fs = _number(font_size, *FONT_SIZE_RANGE, "El tamaño de letra")
+        cfg["title"]["max_size"] = fs
+        cfg["title"]["min_size"] = min(cfg["title"].get("min_size", fs), fs)
+    return cfg
 
 
 def run_ffmpeg(cmd, duration, progress_cb=None):
@@ -217,18 +267,47 @@ def run_ffmpeg(cmd, duration, progress_cb=None):
         progress_cb(1.0)
 
 
+def _even(v):
+    v = int(v)
+    return v - v % 2
+
+
 def zone_of(cfg, preset, name):
-    z = PRESETS[preset].get("zones", {}).get(name)
-    if z:
-        return z
+    spec_z = PRESETS[preset].get("zones", {})
     cw, ch = cfg["canvas"]
-    defaults = {
+    th = cfg.get("title_height")
+    base = {
         "top": cfg.get("top_zone", cfg.get("cam_zone")),
         "bottom": cfg.get("bottom_zone", cfg.get("game_zone")),
         "title": cfg["title_zone"],
         "full": [0, 0, cw, ch],
     }
-    return defaults[name]
+    if name in spec_z:
+        z = list(spec_z[name])
+        if name == "title" and th:
+            cap = spec_z["main"][1] - z[1] - 16 if "main" in spec_z else TITLE_HEIGHT_RANGE[1]
+            z[3] = _even(min(max(th, TITLE_HEIGHT_RANGE[0]), cap))
+        return z
+    if th and "title" not in spec_z and name in ("top", "bottom", "title"):
+        th = _even(min(max(th, TITLE_HEIGHT_RANGE[0]), TITLE_HEIGHT_RANGE[1]))
+        t0, b0 = base["top"][3], base["bottom"][3]
+        top_h = _even(round((ch - th) * t0 / (t0 + b0)))
+        if name == "top":
+            return [0, 0, cw, top_h]
+        if name == "title":
+            return [0, top_h, cw, th]
+        return [0, top_h + th, cw, ch - top_h - th]
+    return list(base[name])
+
+
+def render_lines(cfg, title_z, out_png):
+    cw, ch = cfg["canvas"]
+    img = Image.new("RGBA", (cw, ch), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    color = tuple(int(cfg["accent_color"][i:i + 2], 16) for i in (1, 3, 5)) + (255,)
+    for y in (title_z[1] - 3, title_z[1] + title_z[3] - 3):
+        d.rectangle([0, y, cw, y + 6], fill=color)
+    img.save(out_png)
 
 
 def normalize_image(src, out_png, max_side=4096):
@@ -244,7 +323,7 @@ def cover(label_in, w, h, label_out):
 
 
 def build(clip, title, cfg, out_path, no_cam=False, preset="cam_game", clip_b=None, image=None, audio="a",
-          progress_cb=None):
+          progress_cb=None, still=False):
     if preset not in PRESETS:
         raise ValueError(f"Variación desconocida: {preset} (opciones: {', '.join(PRESETS)})")
     spec = PRESETS[preset]
@@ -273,7 +352,9 @@ def build(clip, title, cfg, out_path, no_cam=False, preset="cam_game", clip_b=No
         render_background(cfg, bg)
         render_title(title, title_z, cfg, title_png)
 
-        inputs, n = ["-i", str(clip)], 1
+        dur_a = probe_duration(clip)
+        seek = ["-ss", f"{min(1.0, dur_a * 0.4):.2f}"] if still else []
+        inputs, n = [*seek, "-i", str(clip)], 1
         idx = {}
         if "clip_b" in spec["needs"] or audio == "b":
             inputs += ["-stream_loop", "-1", "-i", str(clip_b)]
@@ -290,7 +371,14 @@ def build(clip, title, cfg, out_path, no_cam=False, preset="cam_game", clip_b=No
         idx["bg"], n = n, n + 1
         inputs += ["-loop", "1", "-i", str(title_png)]
         idx["title"], n = n, n + 1
-        overlay = cfg.get("overlay_clean_png") if spec.get("clean_overlay") else None
+        accent, clean = cfg.get("accent_color"), cfg.get("overlay_clean_png")
+        dyn_lines = bool(accent and clean and not spec.get("clean_overlay"))
+        if dyn_lines:
+            lines_png = td / "lines.png"
+            render_lines(cfg, title_z, lines_png)
+            inputs += ["-loop", "1", "-i", str(lines_png)]
+            idx["lines"], n = n, n + 1
+        overlay = clean if (spec.get("clean_overlay") or dyn_lines) else None
         overlay = overlay or cfg.get("overlay_png")
         if overlay:
             inputs += ["-loop", "1", "-i", str(resolve(overlay))]
@@ -335,6 +423,9 @@ def build(clip, title, cfg, out_path, no_cam=False, preset="cam_game", clip_b=No
                 raise ValueError(f"slot desconocido: {kind}")
             f.append(f"[{last}][{lab}]overlay={pos}[o{i}]")
             last = f"o{i}"
+        if "lines" in idx:
+            f.append(f"[{last}][{idx['lines']}:v]overlay=0:0[ln]")
+            last = "ln"
         f.append(f"[{last}][{idx['title']}:v]overlay={title_z[0]}:{title_z[1]}[t]")
         last = "t"
         if "overlay" in idx:
@@ -344,6 +435,10 @@ def build(clip, title, cfg, out_path, no_cam=False, preset="cam_game", clip_b=No
 
         cmd = ["ffmpeg", "-y", "-v", "error", "-nostats", "-progress", "pipe:1", *inputs,
                "-filter_complex", ";".join(f), "-map", "[out]"]
+        if still:
+            cmd += ["-frames:v", "1", str(out_path)]
+            run_ffmpeg(cmd, 1.0, None)
+            return
         if audio == "a" and has_audio(clip):
             cmd += ["-map", "0:a"]
         elif audio == "b" and has_audio(clip_b):
@@ -351,9 +446,8 @@ def build(clip, title, cfg, out_path, no_cam=False, preset="cam_game", clip_b=No
         if "-map" in cmd[cmd.index("[out]") + 1:]:
             cmd += ["-c:a", "aac", "-b:a", "192k"]
         cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "21", "-r", "30",
-                "-t", f"{probe_duration(clip):.3f}", "-movflags", "+faststart", str(out_path)]
-        duration = probe_duration(clip)
-        run_ffmpeg(cmd, duration, progress_cb)
+                "-t", f"{dur_a:.3f}", "-movflags", "+faststart", str(out_path)]
+        run_ffmpeg(cmd, dur_a, progress_cb)
     print(f"Listo: {out_path}")
 
 
@@ -392,6 +486,9 @@ def main():
     p.add_argument("--clip-b", help="segundo video (variación clip_clip)")
     p.add_argument("--image", help="imagen (variaciones clip_image / image_clip)")
     p.add_argument("--audio", default="a", choices=AUDIO_CHOICES, help="audio: del clip A, del B o sin audio")
+    p.add_argument("--game", help="recorte del gameplay: x,y,w,h en fracciones 0-1")
+    p.add_argument("--title-height", type=float, help=f"alto de la franja del título en px {TITLE_HEIGHT_RANGE}")
+    p.add_argument("--font-size", type=float, help=f"tamaño de letra máximo del título {FONT_SIZE_RANGE}")
     p.add_argument("--list-presets", action="store_true", help="muestra las variaciones disponibles")
     a = p.parse_args()
 
@@ -417,13 +514,18 @@ def main():
         if path and not Path(path).is_file():
             sys.exit(f"No existe el archivo de {flag}: {path}")
     cfg = json.loads(Path(a.layout).read_text())
-    if a.cam:
+    def parse_box(text, flag):
         try:
-            cam = [float(v) for v in a.cam.split(",")]
-            assert len(cam) == 4 and all(0 <= v <= 1 for v in cam) and cam[0] + cam[2] <= 1 and cam[1] + cam[3] <= 1
-        except (ValueError, AssertionError):
-            sys.exit("--cam debe ser x,y,w,h entre 0 y 1 y dentro del cuadro (ej. 0.7,0.02,0.28,0.32)")
-        cfg["cam_crop"] = cam
+            return [float(v) for v in text.split(",")]
+        except ValueError:
+            sys.exit(f"{flag} debe ser x,y,w,h entre 0 y 1 (ej. 0.7,0.02,0.28,0.32)")
+
+    try:
+        cfg = apply_overrides(cfg, cam=parse_box(a.cam, "--cam") if a.cam else None,
+                              game=parse_box(a.game, "--game") if a.game else None,
+                              title_height=a.title_height, font_size=a.font_size)
+    except ValueError as e:
+        sys.exit(str(e))
 
     if a.batch:
         run_batch(Path(a.clip), cfg, a.no_cam, preset=a.preset, clip_b=a.clip_b, image=a.image, audio=a.audio)
