@@ -1,0 +1,31 @@
+const { chromium } = require('playwright');
+const { execSync } = require('child_process');
+(async () => {
+  const base = 'http://127.0.0.1:5000';
+  const big = process.argv[2];
+  const browser = await chromium.launch();
+  const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+  const msgs = new Set(); const errors = [];
+  page.on('pageerror', e => errors.push(String(e)));
+  await page.goto(base);
+  await page.waitForSelector('#presets .card');
+  const t0 = Date.now();
+  await page.setInputFiles('#file', big);
+  await page.waitForSelector('#stage', { state: 'visible', timeout: 60000 });
+  const upSecs = ((Date.now() - t0) / 1000).toFixed(1);
+  await page.fill('#title', 'Clip pesado de 60 segundos');
+  await page.click('#go');
+  const poll = setInterval(async () => { try { msgs.add(await page.textContent('#msg')); } catch {} }, 250);
+  await page.waitForSelector('#result video', { timeout: 120000 });
+  clearInterval(poll);
+  const montajeSecs = ((Date.now() - t0) / 1000 - Number(upSecs)).toFixed(1);
+  const progress = [...msgs].filter(m => /Montando video… \d+%/.test(m));
+  console.log(JSON.stringify({ subida_s: upSecs, montaje_s: montajeSecs, mensajesDeProgreso: progress.length, ejemplos: progress.slice(0, 3).concat(progress.slice(-2)), errors }, null, 1));
+  // servidor caido: el mensaje debe ser entendible
+  execSync('pkill -f "[a]pp.py 5000" || true');
+  await new Promise(r => setTimeout(r, 1000));
+  await page.setInputFiles('#file', big).catch(() => {});
+  await page.waitForFunction(() => /No hay conexión/.test(document.querySelector('#msg').textContent), null, { timeout: 30000 });
+  console.log('MENSAJE CON SERVIDOR CAIDO:', await page.textContent('#msg'));
+  await browser.close();
+})().catch(e => { console.error('FALLO', e.message); process.exit(1); });

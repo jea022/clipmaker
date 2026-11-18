@@ -1,0 +1,11 @@
+work/
+out/
+secrets/
+data/
+bin/
+.venv/
+__pycache__/
+*.preview.png
+clipmaker.zip
+node_modules/
+update.json

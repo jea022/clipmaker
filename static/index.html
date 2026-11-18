@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clipmaker</title>
+<style>
+  :root { --bg:#0e0e16; --panel:#171724; --line:#2a2a3d; --text:#f2f2f7; --muted:#9a9ab0; --accent:#ff7a00; --ok:#3ddc84; --err:#ff5c5c; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 system-ui, sans-serif; }
+  header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:12px; }
+  header h1 { font-size:18px; margin:0; }
+  main { display:grid; grid-template-columns: minmax(0,1fr) 380px; gap:24px; padding:24px; max-width:1200px; margin:0 auto; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:18px; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0 0 12px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:12px 0 6px; }
+  input[type=text], select { width:100%; padding:10px 12px; background:#0e0e16; color:var(--text); border:1px solid var(--line); border-radius:8px; font:inherit; }
+  input[type=text]:focus, select:focus { outline:2px solid var(--accent); outline-offset:1px; }
+  #drop { border:2px dashed var(--line); border-radius:10px; padding:28px; text-align:center; color:var(--muted); cursor:pointer; }
+  #drop.over { border-color:var(--accent); color:var(--text); }
+  #drop.has { border-style:solid; color:var(--text); }
+  button { background:var(--accent); color:#111; border:0; padding:11px 18px; border-radius:8px; font:inherit; font-weight:700; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--text); border:1px solid var(--line); font-weight:600; padding:7px 12px; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { display:flex; align-items:center; gap:6px; background:#0e0e16; border:1px solid var(--line); padding:6px 10px; border-radius:99px; cursor:pointer; user-select:none; }
+  .chip input { accent-color:var(--accent); }
+  #stage { position:relative; display:none; margin-top:8px; touch-action:none; }
+  #stage img { width:100%; display:block; border-radius:8px; }
+  #box { position:absolute; border:3px solid #ff3b3b; background:rgba(255,59,59,.15); pointer-events:none; }
+  .hint { font-size:12px; color:var(--muted); margin-top:6px; }
+  #msg { min-height:20px; font-size:14px; margin-top:10px; }
+  #msg.err { color:var(--err); } #msg.ok { color:var(--ok); }
+  video { width:100%; border-radius:10px; background:#000; aspect-ratio:9/16; }
+  .cap { background:#0e0e16; border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:10px; font-size:13px; white-space:pre-wrap; word-break:break-word; }
+  .cap-h { display:flex; justify-content:space-between; align-items:center; margin:12px 0 6px; font-size:12px; color:var(--muted); }
+  .cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(118px,1fr)); gap:10px; }
+  .card { position:relative; border:2px solid var(--line); border-radius:10px; padding:10px 6px 8px; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:7px; text-align:center; font-size:12px; line-height:1.3; }
+  .card input { position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; }
+  .card:has(input:checked) { border-color:var(--accent); background:rgba(255,122,0,.09); }
+  .card:has(input:focus-visible) { outline:2px solid var(--accent); outline-offset:2px; }
+  .thumb { width:54px; height:96px; display:flex; flex-direction:column; border-radius:4px; overflow:hidden; background:#000; }
+  .thumb div { min-height:0; }
+  .k-cam { background:#ff7a00; } .k-clip { background:#7c5cff; } .k-image { background:#2fbf71; } .k-clipb { background:#2f8cff; }
+  .k-blur { background:#3a3a55; } .k-title { background:#111; border-top:1px solid #ff7a00; border-bottom:1px solid #ff7a00; }
+  .extra { margin-top:14px; display:none; }
+  .mini-drop { border:2px dashed var(--line); border-radius:10px; padding:14px; text-align:center; color:var(--muted); cursor:pointer; display:flex; gap:12px; align-items:center; justify-content:center; }
+  .mini-drop.over { border-color:var(--accent); color:var(--text); }
+  .mini-drop.has { border-style:solid; color:var(--text); }
+  .mini-drop img { height:56px; border-radius:6px; }
+  progress { width:100%; height:8px; margin-top:10px; accent-color:var(--accent); }
+  .banner { display:flex; gap:14px; align-items:center; justify-content:center; flex-wrap:wrap; padding:10px 24px; background:rgba(255,122,0,.14); border-bottom:1px solid var(--accent); }
+  .empty { color:var(--muted); text-align:center; padding:60px 10px; }
+</style>
+</head>
+<body>
+<header><h1>Clipmaker</h1><span style="color:var(--muted)">clip horizontal → vertical con plantilla</span><span id="ver" style="margin-left:auto;color:var(--muted);font-size:12px"></span></header>
+<div id="update" class="banner" style="display:none"><span id="updtxt"></span><button id="updbtn">Actualizar ahora</button></div>
+<main>
+  <div>
+    <section>
+      <h2>1 · Clip</h2>
+      <div id="drop" tabindex="0">Arrastra el clip aquí o haz clic para elegirlo<br><small>mp4, mov, mkv, webm</small></div>
+      <input id="file" type="file" accept="video/*" hidden>
+    </section>
+
+    <section>
+      <h2>2 · Variación</h2>
+      <div id="presets" class="cards" role="radiogroup" aria-label="Variación de composición"></div>
+      <div id="extra-image" class="extra">
+        <label>Imagen</label>
+        <div class="mini-drop" id="drop-image" tabindex="0"><span>Arrastra una imagen o haz clic<br><small>png, jpg, webp, gif</small></span></div>
+        <input id="file-image" type="file" accept="image/*" hidden>
+      </div>
+      <div id="extra-clipb" class="extra">
+        <label>Segundo video (B)</label>
+        <div class="mini-drop" id="drop-clipb" tabindex="0"><span>Arrastra el segundo video o haz clic<br><small>si dura menos que el A, se repite</small></span></div>
+        <input id="file-clipb" type="file" accept="video/*" hidden>
+        <label for="audio">Audio del resultado</label>
+        <select id="audio"><option value="a">Del video A</option><option value="b">Del video B</option><option value="mute">Sin audio</option></select>
+      </div>
+    </section>
+
+    <section>
+      <h2>3 · Título y cuenta</h2>
+      <label for="title">Título (va en el centro del video)</label>
+      <input id="title" type="text" maxlength="200" placeholder="Se le cae todo en pleno robo en GTA VI">
+      <label for="account">Cuenta</label>
+      <select id="account"></select>
+      <label>Quién sale en el clip (para los hashtags)</label>
+      <div id="people" class="chips"></div>
+    </section>
+
+    <section id="camsec">
+      <h2>4 · Cámara</h2>
+      <label class="chip" style="display:inline-flex"><input id="nocam" type="checkbox"> Sin cámara (solo gameplay)</label>
+      <div id="stage"><img id="frame" alt="Frame del clip" draggable="false"><div id="box"></div></div>
+      <div class="hint" id="camhint">Sube un clip y dibuja con el ratón el recuadro donde sale la cámara del streamer.</div>
+      <div class="row" style="margin-top:10px"><button class="ghost" id="savecam" disabled>Guardar como recuadro por defecto de esta cuenta</button></div>
+    </section>
+
+    <div class="row"><button id="go" disabled>Crear video</button></div>
+    <progress id="bar" max="100" value="0" style="display:none"></progress>
+    <div class="hint" id="gohint"></div>
+    <div id="msg"></div>
+  </div>
+
+  <div>
+    <section>
+      <h2>Resultado</h2>
+      <div id="result"><div class="empty">Aquí aparecerá el video terminado.</div></div>
+    </section>
+    <section id="capsec" style="display:none">
+      <h2>Textos para publicar</h2>
+      <div id="caps"></div>
+      <div class="row" style="margin-top:14px">
+        <select id="privacy" style="width:auto"><option value="private">Privado</option><option value="unlisted">No listado</option></select>
+        <button id="ytup" class="ghost">Subir a YouTube Shorts</button>
+      </div>
+      <div class="hint">La primera vez se abrirá el navegador para iniciar sesión en el canal de esa cuenta. Para TikTok, copia el caption y sube el video a mano.</div>
+      <div id="ytmsg" class="hint"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let accounts = {}, job = null, cam = null, drag = null;
+let presets = [], preset = 'cam_game';
+const extras = { image: false, clip_b: false };
+const extraFiles = { image: null, clip_b: null };
+
+const msg = (t, cls='') => { $('msg').textContent = t; $('msg').className = cls; };
+
+const NO_CONN = 'No hay conexión con la app. Comprueba que la ventana negra de Clipmaker (run.bat) siga abierta; si la cerraste, ábrela de nuevo y recarga esta página.';
+
+async function api(url, opts) {
+  let r;
+  try { r = await fetch(url, opts); } catch { throw new Error(NO_CONN); }
+  let data = {};
+  try { data = await r.json(); } catch {}
+  if (!r.ok) throw new Error(data.error || `Error ${r.status}`);
+  return data;
+}
+
+function setBar(pct) {
+  const b = $('bar');
+  if (pct == null) { b.style.display = 'none'; return; }
+  b.style.display = 'block'; b.value = pct;
+}
+
+function xhrPost(url, fd, label) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open('POST', url);
+    x.upload.onprogress = e => {
+      if (!e.lengthComputable) return;
+      const pct = Math.round(e.loaded / e.total * 100);
+      setBar(pct); msg(`${label} ${pct}%`);
+    };
+    x.onerror = x.ontimeout = () => reject(new Error(NO_CONN));
+    x.onload = () => {
+      let data = {};
+      try { data = JSON.parse(x.responseText); } catch {}
+      if (x.status >= 200 && x.status < 300) resolve(data);
+      else reject(new Error(data.error || `Error ${x.status}`));
+    };
+    x.send(fd);
+  });
+}
+
+const NEED_LABEL = { image: 'la imagen', clip_b: 'el segundo video' };
+const curPreset = () => presets.find(p => p.id === preset);
+
+function missing() {
+  if (!job) return 'Sube primero el clip principal.';
+  const need = curPreset().needs.filter(n => !extras[n]);
+  if (need.length) return 'Falta subir ' + need.map(n => NEED_LABEL[n]).join(' y ') + '.';
+  if (!$('title').value.trim()) return 'Escribe un título.';
+  return '';
+}
+
+function refreshGo() {
+  if (!curPreset()) return;
+  const m = missing();
+  $('go').disabled = !!m;
+  $('gohint').textContent = m;
+}
+
+function renderPresets() {
+  $('presets').innerHTML = '';
+  presets.forEach(p => {
+    const l = document.createElement('label'); l.className = 'card';
+    const i = document.createElement('input'); i.type = 'radio'; i.name = 'preset'; i.value = p.id; i.checked = p.id === preset;
+    i.onchange = () => selectPreset(p.id);
+    const t = document.createElement('div'); t.className = 'thumb';
+    p.diagram.forEach(([kind, w]) => { const s = document.createElement('div'); s.className = 'k-' + kind; s.style.flex = w; t.appendChild(s); });
+    const n = document.createElement('span'); n.textContent = p.label;
+    l.append(i, t, n); $('presets').appendChild(l);
+  });
+}
+
+function selectPreset(id) {
+  preset = id;
+  const p = curPreset();
+  $('extra-image').style.display = p.needs.includes('image') ? 'block' : 'none';
+  $('extra-clipb').style.display = p.needs.includes('clip_b') ? 'block' : 'none';
+  $('camsec').style.display = p.uses_cam ? 'block' : 'none';
+  refreshGo();
+}
+
+async function attach(kind, file, silent) {
+  if (!job) { msg('Sube primero el clip principal.', 'err'); return; }
+  const fd = new FormData(); fd.append('id', job.id); fd.append('kind', kind); fd.append('file', file);
+  const box = kind === 'image' ? $('drop-image') : $('drop-clipb');
+  try {
+    if (!silent) msg('Subiendo…');
+    const r = await xhrPost('/api/attach', fd, 'Subiendo…');
+    setBar(null);
+    extras[kind] = true; extraFiles[kind] = file;
+    box.classList.add('has');
+    box.innerHTML = '';
+    const im = document.createElement('img'); im.alt = ''; im.src = r.preview + '?t=' + Date.now();
+    const sp = document.createElement('span'); sp.textContent = `${file.name} · ${r.width}×${r.height}` + (r.duration ? ` · ${r.duration}s` : '');
+    box.append(im, sp);
+    if (!silent) msg('Listo.', 'ok');
+  } catch (e) { extras[kind] = false; extraFiles[kind] = null; setBar(null); msg(e.message, 'err'); }
+  refreshGo();
+}
+
+function wireExtra(dropId, fileId, kind) {
+  const d = $(dropId), f = $(fileId);
+  d.onclick = () => f.click();
+  d.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') f.click(); };
+  f.onchange = e => e.target.files[0] && attach(kind, e.target.files[0]);
+  d.ondragover = e => { e.preventDefault(); d.classList.add('over'); };
+  d.ondragleave = () => d.classList.remove('over');
+  d.ondrop = e => { e.preventDefault(); d.classList.remove('over'); e.dataTransfer.files[0] && attach(kind, e.dataTransfer.files[0]); };
+}
+wireExtra('drop-image', 'file-image', 'image');
+wireExtra('drop-clipb', 'file-clipb', 'clip_b');
+
+function renderPeople() {
+  const acc = accounts[$('account').value];
+  $('people').innerHTML = '';
+  acc.people.forEach(p => {
+    const l = document.createElement('label');
+    l.className = 'chip'; l.style.margin = 0;
+    l.innerHTML = `<input type="checkbox" value="${p}"> ${p}`;
+    $('people').appendChild(l);
+  });
+  cam = acc.cam_crop.slice(); drawBox();
+}
+
+function drawBox() {
+  const b = $('box');
+  if (!cam) { b.style.display = 'none'; return; }
+  b.style.display = 'block';
+  b.style.left = cam[0]*100 + '%'; b.style.top = cam[1]*100 + '%';
+  b.style.width = cam[2]*100 + '%'; b.style.height = cam[3]*100 + '%';
+}
+
+function pos(e) {
+  const r = $('frame').getBoundingClientRect();
+  return [Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1), Math.min(Math.max((e.clientY - r.top) / r.height, 0), 1)];
+}
+$('stage').addEventListener('pointerdown', e => { drag = pos(e); $('stage').setPointerCapture(e.pointerId); });
+$('stage').addEventListener('pointermove', e => {
+  if (!drag) return;
+  const [x, y] = pos(e);
+  cam = [Math.min(drag[0], x), Math.min(drag[1], y), Math.abs(x - drag[0]), Math.abs(y - drag[1])];
+  drawBox();
+});
+$('stage').addEventListener('pointerup', () => {
+  drag = null;
+  if (cam && (cam[2] < 0.02 || cam[3] < 0.02)) { cam = accounts[$('account').value].cam_crop.slice(); drawBox(); }
+});
+
+async function upload(file) {
+  msg('Subiendo clip…');
+  const fd = new FormData(); fd.append('clip', file);
+  try {
+    job = await xhrPost('/api/upload', fd, 'Subiendo clip…');
+    setBar(null);
+    $('drop').textContent = `${file.name} · ${job.width}×${job.height} · ${job.duration}s`;
+    $('drop').classList.add('has');
+    $('frame').src = job.frame + '?t=' + Date.now();
+    $('stage').style.display = 'block';
+    $('camhint').textContent = 'Arrastra sobre la imagen para marcar la cámara (recuadro rojo).';
+    $('savecam').disabled = false;
+    extras.image = extras.clip_b = false;
+    msg('Clip listo.', 'ok');
+    for (const k of ['image', 'clip_b']) if (extraFiles[k]) await attach(k, extraFiles[k], true);
+  } catch (e) { job = null; setBar(null); msg(e.message, 'err'); }
+  refreshGo();
+}
+
+$('drop').onclick = () => $('file').click();
+$('drop').onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') $('file').click(); };
+$('file').onchange = e => e.target.files[0] && upload(e.target.files[0]);
+$('drop').ondragover = e => { e.preventDefault(); $('drop').classList.add('over'); };
+$('drop').ondragleave = () => $('drop').classList.remove('over');
+$('drop').ondrop = e => { e.preventDefault(); $('drop').classList.remove('over'); e.dataTransfer.files[0] && upload(e.dataTransfer.files[0]); };
+$('title').oninput = refreshGo;
+$('account').onchange = renderPeople;
+$('nocam').onchange = () => { $('stage').style.opacity = $('nocam').checked ? .35 : 1; };
+
+$('savecam').onclick = async () => {
+  try {
+    await api('/api/cam-default', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ account: $('account').value, cam }) });
+    accounts[$('account').value].cam_crop = cam.slice();
+    msg('Recuadro guardado para esta cuenta.', 'ok');
+  } catch (e) { msg(e.message, 'err'); }
+};
+
+function capBlock(label, text) {
+  const wrap = document.createElement('div');
+  const h = document.createElement('div'); h.className = 'cap-h';
+  const s = document.createElement('span'); s.textContent = label;
+  const b = document.createElement('button'); b.className = 'ghost'; b.textContent = 'Copiar';
+  b.onclick = async () => { try { await navigator.clipboard.writeText(text); b.textContent = 'Copiado'; } catch { b.textContent = 'Selecciona y copia'; } setTimeout(() => b.textContent = 'Copiar', 1500); };
+  h.append(s, b);
+  const c = document.createElement('div'); c.className = 'cap'; c.textContent = text;
+  wrap.append(h, c);
+  return wrap;
+}
+
+$('go').onclick = async () => {
+  $('go').disabled = true; msg('Montando video…');
+  const people = [...document.querySelectorAll('#people input:checked')].map(i => i.value);
+  try {
+    const { task } = await api('/api/render-start', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ id: job.id, title: $('title').value, account: $('account').value, cam, no_cam: $('nocam').checked, people, preset, audio: $('audio').value }) });
+    let r;
+    for (;;) {
+      const st = await api('/api/render-status/' + task);
+      const pct = Math.round(st.progress * 100);
+      setBar(pct); msg(`Montando video… ${pct}%`);
+      if (st.state === 'done') { r = st.result; break; }
+      if (st.state === 'error') throw new Error(st.error);
+      await new Promise(res => setTimeout(res, 600));
+    }
+    setBar(null);
+    $('result').innerHTML = '';
+    const v = document.createElement('video'); v.controls = true; v.src = r.video + '?t=' + Date.now();
+    const a = document.createElement('a'); a.href = r.download;
+    a.innerHTML = '<button style="margin-top:12px;width:100%">Descargar video</button>';
+    $('result').append(v, a);
+    $('caps').innerHTML = '';
+    $('caps').append(capBlock('Caption TikTok', r.captions.tiktok_caption),
+                     capBlock('Título YouTube Shorts', r.captions.yt_title),
+                     capBlock('Descripción YouTube Shorts', r.captions.yt_description));
+    $('capsec').style.display = 'block';
+    msg('Listo.', 'ok');
+  } catch (e) { setBar(null); msg(e.message, 'err'); }
+  refreshGo();
+};
+
+$('ytup').onclick = async () => {
+  $('ytup').disabled = true; $('ytmsg').textContent = 'Subiendo a YouTube… (si es la primera vez, revisa la ventana del navegador)';
+  const people = [...document.querySelectorAll('#people input:checked')].map(i => i.value);
+  try {
+    const r = await api('/api/publish-youtube', { method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ id: job.id, title: $('title').value, account: $('account').value, people, privacy: $('privacy').value }) });
+    $('ytmsg').innerHTML = '';
+    const a = document.createElement('a'); a.href = r.url; a.target = '_blank'; a.rel = 'noopener'; a.style.color = 'var(--ok)'; a.textContent = r.url;
+    $('ytmsg').append('Subido: ', a);
+  } catch (e) { $('ytmsg').textContent = e.message; }
+  $('ytup').disabled = false;
+};
+
+async function updateFlow() {
+  try {
+    const u = await api('/api/update/check');
+    $('ver').textContent = 'v' + u.current;
+    if (!u.available) return;
+    $('updtxt').textContent = `Hay una versión nueva (v${u.latest}). Tienes la v${u.current}.`;
+    $('update').style.display = 'flex';
+    $('updbtn').onclick = async () => {
+      $('updbtn').disabled = true; $('updtxt').textContent = 'Actualizando… no cierres la ventana.';
+      try {
+        await api('/api/update/apply', { method: 'POST' });
+        $('updtxt').textContent = 'Reiniciando la app…';
+        for (let i = 0; i < 90; i++) {
+          await new Promise(r => setTimeout(r, 1000));
+          try { await fetch('/api/presets', { cache: 'no-store' }).then(r => { if (!r.ok) throw 0; }); if (i > 1) { location.reload(); return; } } catch {}
+        }
+        $('updtxt').textContent = 'La app tardó en volver. Cierra la ventana negra y abre Clipmaker de nuevo.';
+      } catch (e) { $('updtxt').textContent = e.message; $('updbtn').disabled = false; }
+    };
+  } catch {}
+}
+
+(async () => {
+  updateFlow();
+  try {
+    presets = await api('/api/presets');
+    renderPresets(); selectPreset(preset);
+    accounts = await api('/api/accounts');
+    Object.entries(accounts).forEach(([k, v]) => $('account').add(new Option(v.handle, k)));
+    renderPeople();
+  } catch (e) { msg(e.message, 'err'); }
+})();
+</script>
+</body>
+</html>
