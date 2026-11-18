@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -121,7 +122,7 @@ def api_accounts():
     out = {}
     for name, acc in captions.ACCOUNTS.items():
         cfg = json.loads(account_layout_path(name).read_text())
-        out[name] = {"handle": acc["handle"], "people": sorted(acc["people"]), **account_settings(name, cfg),
+        out[name] = {"handle": acc["handle"], "people": captions.people_keys(name), **account_settings(name, cfg),
                      "factory": factory_settings(cfg)}
     return jsonify(out)
 
@@ -282,14 +283,18 @@ def prepare_render(data):
     except ValueError as e:
         return None, (jsonify(error=str(e)), 400)
     people = [str(p) for p in data.get("people", []) if isinstance(p, str)][:10]
+    game = data.get("clip_game", "gta6")
+    if not isinstance(game, str) or game not in captions.GAMES:
+        return None, (jsonify(error="Juego del clip no válido"), 400)
     return dict(d=d, title=title, cfg=cfg, preset=preset, clip_b=clip_b, image=image, audio=audio, no_cam=no_cam,
                 src=next(p for p in d.iterdir() if p.stem == "source"), out=d / "out.mp4",
-                account=account, people=people), None
+                account=account, people=people, game=game), None
 
 
 def render_result(p):
     return dict(video=f"/media/{p['d'].name}/out.mp4", download=f"/media/{p['d'].name}/out.mp4?dl=1",
-                captions=captions.generate(p["account"], p["title"], p["people"]))
+                captions=captions.generate(p["account"], p["title"], p["people"], captions.next_cursor(p["account"]),
+                                           p["game"]))
 
 
 def run_build(p, progress_cb=None):
@@ -370,9 +375,15 @@ def api_publish_youtube():
     if not video.is_file():
         return jsonify(error="Primero crea el video"), 400
     people = [str(p) for p in data.get("people", []) if isinstance(p, str)][:10]
+    game = data.get("clip_game", "gta6")
+    if not isinstance(game, str) or game not in captions.GAMES:
+        return jsonify(error="Juego del clip no válido"), 400
+    cursor = data.get("cursor", 0)
+    cursor = cursor if isinstance(cursor, int) and not isinstance(cursor, bool) and cursor >= 0 else 0
     try:
         publish_youtube.validate_video(video)
-        vid = publish_youtube.upload(account, video, publish_youtube.build_body(account, title, people, privacy))
+        vid = publish_youtube.upload(account, video,
+                                     publish_youtube.build_body(account, title, people, privacy, cursor, game))
     except ValueError as e:
         return jsonify(error=str(e)), 400
     except FileNotFoundError as e:
@@ -381,6 +392,59 @@ def api_publish_youtube():
         app.logger.exception("fallo subiendo a YouTube")
         return jsonify(error=f"YouTube rechazó la subida: {type(e).__name__}"), 502
     return jsonify(url=f"https://youtube.com/shorts/{vid}", privacy=privacy)
+
+
+def hashtag_view(account):
+    return {"config": captions.effective(account), "defaults": captions.defaults(account),
+            "customized": captions.is_customized(account)}
+
+
+@app.get("/api/hashtags")
+def api_hashtags():
+    return jsonify({name: hashtag_view(name) for name in captions.ACCOUNTS})
+
+
+@app.post("/api/hashtags")
+def api_hashtags_save():
+    data = request.get_json(silent=True) or {}
+    account = data.get("account")
+    if not isinstance(account, str) or account not in captions.ACCOUNTS:
+        return jsonify(error="Cuenta desconocida"), 400
+    if data.get("reset"):
+        captions.reset_config(account)
+    else:
+        try:
+            captions.save_config(account, data.get("config"))
+        except ValueError as e:
+            return jsonify(error=str(e)), 400
+    return jsonify(hashtag_view(account))
+
+
+@app.post("/api/hashtags/preview")
+def api_hashtags_preview():
+    data = request.get_json(silent=True) or {}
+    account = data.get("account")
+    if not isinstance(account, str) or account not in captions.ACCOUNTS:
+        return jsonify(error="Cuenta desconocida"), 400
+    game = data.get("clip_game", "gta6")
+    if not isinstance(game, str) or game not in captions.GAMES:
+        return jsonify(error="Juego del clip no válido"), 400
+    people = [str(p) for p in data.get("people", []) if isinstance(p, str)][:10]
+    n = data.get("n", 6)
+    n = n if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 12 else 6
+    try:
+        cfg = captions.validate_config(data["config"]) if data.get("config") is not None else captions.effective(account)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    title = " ".join(str(data.get("title") or "Título de ejemplo").split())[:MAX_TITLE]
+    samples = [captions.generate(account, title, people, c, game, cfg) for c in range(n)]
+    usage = {}
+    for c in range(30):
+        for tag in captions.pick(cfg, people, cfg["count_tiktok"], c, game)[0]:
+            usage[tag] = usage.get(tag, 0) + 1
+    return jsonify(samples=[{"cursor": s["cursor"], "tiktok_caption": s["tiktok_caption"], "hashtags": s["hashtags"],
+                             "yt_hashtags": s["yt_hashtags"]} for s in samples],
+                   usage=[{"tag": t, "clips": k} for t, k in sorted(usage.items(), key=lambda kv: (-kv[1], kv[0]))])
 
 
 @app.get("/api/update/check")
@@ -399,6 +463,16 @@ def api_update_apply():
         return jsonify(error="No pude actualizar. Tu versión sigue intacta."), 500
     threading.Timer(1.0, lambda: os._exit(RESTART_CODE)).start()
     return jsonify(result)
+
+
+def port_busy(port):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind(("127.0.0.1", port))
+        except OSError:
+            return True
+    return False
 
 
 PREVIEW_LOCK = threading.Lock()
@@ -468,4 +542,7 @@ if __name__ == "__main__":
             print(f"Sin actualizar: {e}")
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
     print(f"Abre http://127.0.0.1:{port}")
+    if port_busy(port):
+        sys.exit(f"No pude abrir el puerto {port}: ya lo usa otro programa.\n"
+                 f"En Mac suele ser AirPlay Receiver (usa el 5000). Prueba con otro puerto: ./run.sh 5055")
     app.run(host="127.0.0.1", port=port, debug=False)

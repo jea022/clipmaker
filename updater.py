@@ -67,11 +67,23 @@ def check_url(url, cfg):
         raise UpdateError(f"Dominio no permitido para actualizar: {u.hostname}")
 
 
+class _SafeRedirects(urllib.request.HTTPRedirectHandler):
+    """Valida cada redireccion ANTES de seguirla: nunca se conecta a un dominio no permitido."""
+
+    def __init__(self, cfg):
+        self.cfg = cfg
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        check_url(newurl, self.cfg)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def fetch(url, cfg, limit):
     check_url(url, cfg)
     req = urllib.request.Request(url, headers={"User-Agent": "clipmaker-updater"})
+    opener = urllib.request.build_opener(_SafeRedirects(cfg))
     try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        with opener.open(req, timeout=TIMEOUT) as r:
             check_url(r.geturl(), cfg)
             data = r.read(limit + 1)
     except UpdateError:

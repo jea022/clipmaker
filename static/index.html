@@ -71,6 +71,16 @@
   .opt:has(input:focus-visible) { outline:2px solid var(--accent); outline-offset:2px; }
   .sample { display:inline-block; padding:2px 9px; border-radius:6px; font-weight:700; font-size:14px; line-height:1.3; }
   .fsample { font-size:18px; line-height:1.2; }
+  textarea { width:100%; padding:10px 12px; background:#0e0e16; color:var(--text); border:1px solid var(--line); border-radius:8px; font:13px/1.4 ui-monospace, Menlo, Consolas, monospace; resize:vertical; }
+  textarea:focus, input[type=number]:focus { outline:2px solid var(--accent); outline-offset:1px; }
+  input[type=number] { width:90px; padding:8px 10px; background:#0e0e16; color:var(--text); border:1px solid var(--line); border-radius:8px; font:inherit; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:0 14px; }
+  @media (max-width: 700px) { .grid2 { grid-template-columns:1fr; } }
+  details > summary { cursor:pointer; color:var(--text); font-weight:600; padding:6px 0; }
+  .sample-cap { background:#0e0e16; border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin-top:8px; font-size:13px; word-break:break-word; }
+  .sample-cap b { color:var(--muted); font-weight:600; margin-right:6px; }
+  .usage { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .usage span { background:#0e0e16; border:1px solid var(--line); border-radius:99px; padding:2px 9px; font-size:12px; }
   progress { width:100%; height:8px; margin-top:10px; accent-color:var(--accent); }
   .banner { display:flex; gap:14px; align-items:center; justify-content:center; flex-wrap:wrap; padding:10px 24px; background:rgba(255,122,0,.14); border-bottom:1px solid var(--accent); }
   .empty { color:var(--muted); text-align:center; padding:60px 10px; }
@@ -132,6 +142,8 @@
       <select id="account"></select>
       <label>Quién sale en el clip (para los hashtags)</label>
       <div id="people" class="chips"></div>
+      <label for="clipgame">Juego del clip (cambia los hashtags fijos)</label>
+      <select id="clipgame" style="width:auto"><option value="gta6">GTA VI</option><option value="gta5rp">GTA V / GTA RP</option></select>
     </section>
 
     <section id="cropsec">
@@ -149,6 +161,37 @@
         <button class="ghost" id="factory">Restablecer valores de fábrica</button>
       </div>
       <div class="hint" id="savemsg" role="status"></div>
+    </section>
+
+    <section id="hashsec">
+      <h2>5 · Hashtags de la cuenta</h2>
+      <div class="hint" style="margin:0 0 8px">Cada clip lleva los fijos, los de las personas que marques y el resto <b>rotando por turnos</b> entre las listas, para que no salgan siempre los mismos. Las dos cuentas tienen listas distintas.</div>
+      <details>
+        <summary>Editar las listas de esta cuenta</summary>
+        <div class="grid2" style="margin-top:8px">
+          <div><label for="ht-always">Siempre (máx. 5)</label><textarea id="ht-always" rows="2" spellcheck="false"></textarea></div>
+          <div><label for="ht-niche">Nicho (rotan)</label><textarea id="ht-niche" rows="2" spellcheck="false"></textarea></div>
+          <div><label for="ht-broad">Alcance general (rotan)</label><textarea id="ht-broad" rows="2" spellcheck="false"></textarea></div>
+          <div><label for="ht-reserve">Reserva (rotan con el nicho)</label><textarea id="ht-reserve" rows="2" spellcheck="false"></textarea></div>
+          <div><label for="ht-rp">Solo clips de GTA RP (los 2 primeros son fijos)</label><textarea id="ht-rp" rows="2" spellcheck="false"></textarea></div>
+          <div><label for="ht-to_verify">Por verificar (no se usan)</label><textarea id="ht-to_verify" rows="2" spellcheck="false"></textarea></div>
+        </div>
+        <label for="ht-people">Personas: una por línea, «nombre: #hashtag1 #hashtag2» (el primero es el principal)</label>
+        <textarea id="ht-people" rows="7" spellcheck="false"></textarea>
+        <div class="row" style="margin-top:12px">
+          <label style="margin:0" for="ht-count-tiktok">Hashtags en TikTok</label><input id="ht-count-tiktok" type="number" min="3" max="15">
+          <label style="margin:0" for="ht-count-shorts">en Shorts</label><input id="ht-count-shorts" type="number" min="3" max="15">
+          <label class="chip" style="margin:0"><input id="ht-shorts-tag" type="checkbox"> Añadir #Shorts</label>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button class="ghost" id="ht-save">Guardar hashtags de esta cuenta</button>
+          <button class="ghost" id="ht-preview">Ver cómo se reparten</button>
+          <button class="ghost" id="ht-reset">Restablecer los recomendados</button>
+        </div>
+        <div id="ht-msg" class="status" role="status"></div>
+        <div id="ht-samples"></div>
+        <div id="ht-usage" class="usage"></div>
+      </details>
     </section>
 
     <div class="row"><button id="go" disabled>Crear video</button></div>
@@ -379,16 +422,25 @@ function applySettings(s) {
   showSliders(); syncTextControls(); drawBoxes();
 }
 
-function renderPeople() {
+function renderPeopleChips() {
   const acc = accounts[$('account').value];
+  const keep = new Set([...document.querySelectorAll('#people input:checked')].map(i => i.value));
   $('people').innerHTML = '';
   acc.people.forEach(p => {
     const l = document.createElement('label');
     l.className = 'chip'; l.style.margin = 0;
-    l.innerHTML = `<input type="checkbox" value="${p}"> ${p}`;
+    const i = document.createElement('input'); i.type = 'checkbox'; i.value = p; i.checked = keep.has(p);
+    l.append(i, ' ' + p);
     $('people').appendChild(l);
   });
+}
+
+function renderPeople() {
+  const acc = accounts[$('account').value];
+  $('people').innerHTML = '';
+  renderPeopleChips();
   applySettings(acc);
+  loadHashtagsForm();
   schedulePreview();
 }
 
@@ -459,12 +511,82 @@ $('upper').onchange = schedulePreview;
 
 $('resetgame').onclick = () => { boxes.game = [0, 0, 1, 1]; drawBoxes(); schedulePreview(); };
 
+let hashtags = {}, lastCaps = null;
+const HT_LISTS = ['always', 'niche', 'broad', 'reserve', 'rp', 'to_verify'];
+const splitTags = s => s.split(/[\s,;]+/).filter(Boolean);
+
+function loadHashtagsForm() {
+  const h = hashtags[$('account').value];
+  if (!h) return;
+  const c = h.config;
+  HT_LISTS.forEach(k => { $('ht-' + k).value = c[k].join(' '); });
+  $('ht-people').value = Object.entries(c.people).map(([n, t]) => `${n}: ${t.join(' ')}`).join('\n');
+  $('ht-count-tiktok').value = c.count_tiktok; $('ht-count-shorts').value = c.count_shorts;
+  $('ht-shorts-tag').checked = c.shorts_tag;
+  $('ht-samples').innerHTML = ''; $('ht-usage').innerHTML = '';
+  $('ht-msg').textContent = h.customized ? 'Esta cuenta usa tu lista personalizada.' : 'Esta cuenta usa la lista recomendada.';
+  $('ht-msg').className = 'status';
+}
+
+function collectHashtags() {
+  const cfg = {};
+  HT_LISTS.forEach(k => { cfg[k] = splitTags($('ht-' + k).value); });
+  cfg.people = {};
+  for (const line of $('ht-people').value.split('\n')) {
+    if (!line.trim()) continue;
+    const i = line.indexOf(':');
+    if (i < 1) throw new Error(`Falta «:» en la línea de personas: «${line.trim().slice(0, 40)}»`);
+    cfg.people[line.slice(0, i).trim()] = splitTags(line.slice(i + 1));
+  }
+  cfg.count_tiktok = +$('ht-count-tiktok').value; cfg.count_shorts = +$('ht-count-shorts').value;
+  cfg.shorts_tag = $('ht-shorts-tag').checked;
+  return cfg;
+}
+
+const htMsg = (t, cls = '') => { $('ht-msg').textContent = t; $('ht-msg').className = 'status ' + cls; };
+
+async function saveHashtags(body, okText) {
+  try {
+    const r = await postJson('/api/hashtags', body);
+    const acc = $('account').value;
+    hashtags[acc] = r;
+    accounts[acc].people = Object.keys(r.config.people).sort();
+    renderPeopleChips(); loadHashtagsForm(); htMsg(okText, 'ok');
+  } catch (e) { htMsg(e.message, 'err'); }
+}
+
+$('ht-save').onclick = () => {
+  let cfg;
+  try { cfg = collectHashtags(); } catch (e) { htMsg(e.message, 'err'); return; }
+  saveHashtags({ account: $('account').value, config: cfg }, 'Hashtags guardados para esta cuenta.');
+};
+$('ht-reset').onclick = () => saveHashtags({ account: $('account').value, reset: true }, 'Se restablecieron los hashtags recomendados.');
+$('ht-preview').onclick = async () => {
+  let cfg;
+  try { cfg = collectHashtags(); } catch (e) { htMsg(e.message, 'err'); return; }
+  try {
+    const r = await postJson('/api/hashtags/preview', { account: $('account').value, config: cfg, title: $('title').value,
+      people: [...document.querySelectorAll('#people input:checked')].map(i => i.value), clip_game: $('clipgame').value, n: 6 });
+    $('ht-samples').innerHTML = '';
+    r.samples.forEach(s => {
+      const d = document.createElement('div'); d.className = 'sample-cap';
+      const b = document.createElement('b'); b.textContent = `Clip ${s.cursor + 1}`;
+      d.append(b, s.hashtags.join(' '));
+      $('ht-samples').appendChild(d);
+    });
+    $('ht-usage').innerHTML = '';
+    r.usage.forEach(u => { const sp = document.createElement('span'); sp.textContent = `${u.tag} ×${u.clips}`; $('ht-usage').appendChild(sp); });
+    htMsg('Así se reparten los hashtags en los próximos clips; abajo, cuántas veces sale cada uno en 30 clips.', 'ok');
+  } catch (e) { htMsg(e.message, 'err'); }
+};
+$('clipgame').onchange = () => { $('ht-samples').innerHTML = ''; };
+
 const payload = () => ({
   id: job.id, title: $('title').value, account: $('account').value, cam: boxes.cam, game: boxes.game,
   no_cam: $('nocam').checked, preset, audio: $('audio').value,
   title_height: +$('titleh').value, font_size: +$('fsize').value,
   title_style: tstyle, font: tfont, split: +$('split').value, offset: +$('offset').value, uppercase: $('upper').checked,
-  people: [...document.querySelectorAll('#people input:checked')].map(i => i.value),
+  people: [...document.querySelectorAll('#people input:checked')].map(i => i.value), clip_game: $('clipgame').value,
 });
 
 $('savecam').onclick = async () => {
@@ -544,6 +666,7 @@ $('go').onclick = async () => {
     const a = document.createElement('a'); a.href = r.download;
     a.innerHTML = '<button style="margin-top:12px;width:100%">Descargar video</button>';
     $('result').append(v, a);
+    lastCaps = r.captions;
     $('caps').innerHTML = '';
     $('caps').append(capBlock('Caption TikTok', r.captions.tiktok_caption),
                      capBlock('Título YouTube Shorts', r.captions.yt_title),
@@ -559,7 +682,8 @@ $('ytup').onclick = async () => {
   const people = [...document.querySelectorAll('#people input:checked')].map(i => i.value);
   try {
     const r = await api('/api/publish-youtube', { method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ id: job.id, title: $('title').value, account: $('account').value, people, privacy: $('privacy').value }) });
+      body: JSON.stringify({ id: job.id, title: $('title').value, account: $('account').value, people, privacy: $('privacy').value,
+        clip_game: lastCaps ? lastCaps.game : $('clipgame').value, cursor: lastCaps ? lastCaps.cursor : 0 }) });
     $('ytmsg').innerHTML = '';
     const a = document.createElement('a'); a.href = r.url; a.target = '_blank'; a.rel = 'noopener'; a.style.color = 'var(--ok)'; a.textContent = r.url;
     $('ytmsg').append('Subido: ', a);
@@ -597,6 +721,7 @@ async function updateFlow() {
     buildTextChips();
     renderPresets(); selectPreset(preset);
     accounts = await api('/api/accounts');
+    hashtags = await api('/api/hashtags');
     Object.entries(accounts).forEach(([k, v]) => $('account').add(new Option(v.handle, k)));
     renderPeople();
   } catch (e) { msg(e.message, 'err'); }

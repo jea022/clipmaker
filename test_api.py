@@ -13,6 +13,9 @@ import tempfile as _tf
 _tmpdata = Path(_tf.mkdtemp()) / "data"
 webapp.CAM_FILE = _tmpdata / "cam_defaults.json"
 webapp.SETTINGS_FILE = _tmpdata / "account_settings.json"
+import captions as _captions
+_captions.USER_FILE = _tmpdata / "hashtags.json"
+_captions.CURSOR_FILE = _tmpdata / "hashtag_cursor.json"
 c = webapp.app.test_client()
 fails = []
 
@@ -349,6 +352,95 @@ tid = start(jid, title_style="outline_yellow", font="anton").json["task"]
 stt, _ = wait_task(tid)
 check("montaje en segundo plano con estilo superpuesto", stt["state"] == "done", stt.get("error"))
 check("montaje en segundo plano con estilo invalido -> 400", start(jid, title_style="x").status_code == 400)
+
+# ---- hashtags: lista editable y reparto ----
+hv = c.get("/api/hashtags").json
+check("hashtags: devuelve las dos cuentas con config, recomendados y estado",
+      set(hv) == {"wganga", "gtahispa"} and all({"config", "defaults", "customized"} <= set(v) for v in hv.values()) and not hv["wganga"]["customized"])
+check("hashtags: los recomendados traen GTA6/GTAVI y personas", hv["wganga"]["config"]["always"] == ["#GTA6", "#GTAVI"] and "westcol" in hv["wganga"]["config"]["people"])
+check("accounts: las personas salen de la lista de hashtags", "lonche" in c.get("/api/accounts").json["wganga"]["people"])
+
+
+def save_ht(account="wganga", **cfg):
+    return c.post("/api/hashtags", json={"account": account, "config": cfg})
+
+
+r = save_ht(always=["#GTA6"], niche="#aaa1 #bbb1, ccc1", broad=["#fyp"], people={"Ana López": ["#ana1", "ana2"]}, count_tiktok=6)
+v = r.json if r.status_code == 200 else {}
+check("hashtags: guardar normaliza y marca la cuenta como personalizada",
+      r.status_code == 200 and v["config"]["niche"] == ["#aaa1", "#bbb1", "#ccc1"] and v["config"]["people"] == {"analopez": ["#ana1", "#ana2"]} and v["customized"] is True, r.status_code)
+check("hashtags: lo guardado aparece en /api/accounts como persona", "analopez" in c.get("/api/accounts").json["wganga"]["people"])
+check("hashtags: la otra cuenta no cambia", not c.get("/api/hashtags").json["gtahispa"]["customized"])
+for name, body in (("cuenta rara", {"account": "x", "config": {}}), ("cuenta lista", {"account": ["wganga"], "config": {}}),
+                   ("sin config", {"account": "wganga"}), ("config no dict", {"account": "wganga", "config": ["x"]}),
+                   ("hashtag con espacio", {"account": "wganga", "config": {"niche": [["#dos palabras"]]}}),
+                   ("hashtag con simbolo", {"account": "wganga", "config": {"niche": ["#ho!la"]}}),
+                   ("cantidad fuera de rango", {"account": "wganga", "config": {"count_tiktok": 99}}),
+                   ("demasiados fijos", {"account": "wganga", "config": {"always": [f"#t{i}x" for i in range(6)]}}),
+                   ("persona sin hashtags", {"account": "wganga", "config": {"people": {"ab": []}}})):
+    check(f"hashtags: rechaza {name}", c.post("/api/hashtags", json=body).status_code == 400)
+check("hashtags: tras rechazos lo guardado sigue intacto", c.get("/api/hashtags").json["wganga"]["config"]["count_tiktok"] == 6)
+r = c.post("/api/hashtags", json={"account": "wganga", "reset": True})
+check("hashtags: restablecer vuelve a los recomendados", r.status_code == 200 and r.json["customized"] is False and r.json["config"] == r.json["defaults"])
+check("hashtags: restablecer una cuenta inexistente -> 400", c.post("/api/hashtags", json={"account": "x", "reset": True}).status_code == 400)
+
+
+def ht_preview(**kw):
+    body = {"account": "wganga", "title": "Prueba", "people": ["westcol"], "n": 6}
+    body.update(kw)
+    return c.post("/api/hashtags/preview", json=body)
+
+
+r = ht_preview()
+check("hashtags/preview: devuelve 6 captions con clips distintos", r.status_code == 200 and len(r.json["samples"]) == 6
+      and len({tuple(s["hashtags"]) for s in r.json["samples"]}) == 6, r.status_code)
+check("hashtags/preview: cada caption lleva 5 hashtags y los fijos", all(len(s["hashtags"]) == 5 and s["hashtags"][:2] == ["#GTA6", "#GTAVI"] for s in r.json["samples"]))
+check("hashtags/preview: YouTube lleva #Shorts al final", all(s["yt_hashtags"][-1] == "#Shorts" and len(s["yt_hashtags"]) == 4 for s in r.json["samples"]))
+check("hashtags/preview: uso por hashtag en 30 clips", r.json["usage"][0]["clips"] == 30 and all(set(u) == {"tag", "clips"} for u in r.json["usage"]))
+r2 = ht_preview(config={"always": ["#solo1"], "niche": ["#nn1", "#nn2", "#nn3"], "count_tiktok": 4}, people=[])
+check("hashtags/preview: usa la config sin guardar", r2.status_code == 200 and r2.json["samples"][0]["hashtags"][0] == "#solo1"
+      and not c.get("/api/hashtags").json["wganga"]["customized"])
+rp = ht_preview(clip_game="gta5rp", people=[])
+check("hashtags/preview: clip RP no lleva #GTA6 y si los de RP",
+      rp.status_code == 200 and all("#GTA6" not in s["hashtags"] and s["hashtags"][0] == "#gtaroleplay" for s in rp.json["samples"]))
+check("hashtags/preview: clip GTA VI no lleva hashtags de RP",
+      not any(t in ("#gtaroleplay", "#colombiarp") for s in r.json["samples"] for t in s["hashtags"]))
+for name, kw in (("juego raro", dict(clip_game="minecraft")), ("juego lista", dict(clip_game=["gta6"])), ("cuenta rara", dict(account="x")),
+                 ("config invalida", dict(config={"niche": ["#mal uno"]}))):
+    check(f"hashtags/preview rechaza {name}", ht_preview(**kw).status_code == 400)
+check("hashtags/preview: n fuera de rango usa 6", len(ht_preview(n=999).json["samples"]) == 6 and len(ht_preview(n="x").json["samples"]) == 6)
+check("hashtags/preview: titulo vacio usa uno de ejemplo", ht_preview(title="").status_code == 200)
+
+# el numero de clip avanza con cada montaje y el juego se aplica
+c0 = c.post("/api/render", json={"id": jid, "title": "Uno", "account": "wganga", "people": ["westcol"]})
+c1 = c.post("/api/render", json={"id": jid, "title": "Uno", "account": "wganga", "people": ["westcol"]})
+cap0, cap1 = c0.json["captions"], c1.json["captions"]
+check("render: el numero de clip avanza (0, 1...)", cap1["cursor"] == cap0["cursor"] + 1, (cap0["cursor"], cap1["cursor"]))
+check("render: dos clips seguidos llevan hashtags distintos", cap0["hashtags"] != cap1["hashtags"])
+check("render: la cuenta gtahispa lleva su propio contador", c.post("/api/render", json={"id": jid, "title": "Uno", "account": "gtahispa"}).json["captions"]["cursor"] == 0)
+rp_r = c.post("/api/render", json={"id": jid, "title": "RP", "account": "wganga", "clip_game": "gta5rp"})
+check("render: juego RP cambia los hashtags fijos", rp_r.status_code == 200 and "#GTA6" not in rp_r.json["captions"]["hashtags"] and rp_r.json["captions"]["game"] == "gta5rp")
+check("render: juego invalido -> 400", c.post("/api/render", json={"id": jid, "title": "x", "account": "wganga", "clip_game": "otro"}).status_code == 400)
+check("render: juego lista -> 400", c.post("/api/render", json={"id": jid, "title": "x", "account": "wganga", "clip_game": ["gta6"]}).status_code == 400)
+tidg = start(jid, clip_game="gta5rp").json["task"]
+stg, _ = wait_task(tidg)
+check("montaje en segundo plano con juego RP", stg["state"] == "done" and stg["result"]["captions"]["game"] == "gta5rp", stg.get("error"))
+check("montaje en segundo plano con juego invalido -> 400", start(jid, clip_game="otro").status_code == 400)
+ht_custom = save_ht(always=["#propio1"], niche=["#extra1", "#extra2"], people={"ana": ["#ana1"]}, count_tiktok=3)
+cust = c.post("/api/render", json={"id": jid, "title": "x", "account": "wganga", "people": ["ana"]}).json["captions"]
+check("render: usa la lista personalizada", cust["hashtags"][:2] == ["#propio1", "#ana1"] and len(cust["hashtags"]) == 3, cust["hashtags"])
+c.post("/api/hashtags", json={"account": "wganga", "reset": True})
+
+# YouTube usa el mismo reparto que se vio en pantalla
+with mock.patch.object(webapp.publish_youtube, "upload", return_value="VIDH") as up_mock:
+    pr = c.post("/api/publish-youtube", json={"id": jid, "title": "Hola", "account": "wganga", "people": ["westcol"], "cursor": 4, "clip_game": "gta6"})
+    sent = up_mock.call_args.args[2] if up_mock.called else {}
+    want = _captions.generate("wganga", "Hola", ["westcol"], 4, "gta6")
+    check("publicar: YouTube usa el mismo reparto (mismo clip) que el caption", pr.status_code == 200 and sent["snippet"]["tags"] == [t.lstrip("#") for t in want["yt_hashtags"]], sent.get("snippet", {}).get("tags"))
+    check("publicar: la descripcion lleva los mismos hashtags", all(t in sent["snippet"]["description"] for t in want["yt_hashtags"]))
+    check("publicar: juego invalido -> 400", c.post("/api/publish-youtube", json={"id": jid, "title": "Hola", "account": "wganga", "clip_game": "x"}).status_code == 400)
+    pr2 = c.post("/api/publish-youtube", json={"id": jid, "title": "Hola", "account": "wganga", "cursor": "x"})
+    check("publicar: cursor basura se trata como 0", pr2.status_code == 200)
 
 # ---- actualizaciones ----
 import updater as _upd

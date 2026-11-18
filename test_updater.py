@@ -165,7 +165,9 @@ class H(http.server.BaseHTTPRequestHandler):
         elif self.path == "/repo.zip":
             body = state["zip"]
         elif self.path == "/redirect":
-            self.send_response(302); self.send_header("Location", "https://evil.com/x"); self.end_headers(); return
+            self.send_response(302); self.send_header("Location", f"http://localhost:{trap_port}/trampa"); self.end_headers(); return
+        elif self.path == "/redirect-ok":
+            self.send_response(302); self.send_header("Location", "/VERSION"); self.end_headers(); return
         else:
             self.send_response(404); self.end_headers(); return
         self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
@@ -174,6 +176,21 @@ class H(http.server.BaseHTTPRequestHandler):
         pass
 
 
+trap_hits = []
+
+
+class Trap(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        trap_hits.append(self.path)
+        self.send_response(200); self.send_header("Content-Length", "5"); self.end_headers(); self.wfile.write(b"1.9.9")
+
+    def log_message(self, *a):
+        pass
+
+
+trap = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Trap)
+threading.Thread(target=trap.serve_forever, daemon=True).start()
+trap_port = trap.server_address[1]
 srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
 threading.Thread(target=srv.serve_forever, daemon=True).start()
 port = srv.server_address[1]
@@ -204,6 +221,9 @@ set_cfg(version_url=f"http://127.0.0.1:{port}/nada")
 check("404 -> error controlado", "error" in updater.check(root))
 set_cfg(version_url=f"http://127.0.0.1:{port}/redirect")
 check("redireccion a dominio no permitido -> bloqueada", "error" in updater.check(root))
+check("redireccion bloqueada: NUNCA se conecto al destino", trap_hits == [], trap_hits)
+set_cfg(version_url=f"http://127.0.0.1:{port}/redirect-ok")
+check("redireccion al mismo dominio permitido -> se sigue", updater.check(root).get("latest") == "1.1.0")
 set_cfg(version_url="http://127.0.0.1:9/VERSION")
 check("servidor caido -> error controlado", "No pude conectar" in updater.check(root).get("error", ""))
 set_cfg()

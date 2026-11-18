@@ -1,0 +1,50 @@
+{
+  "wganga": {
+    "always": ["#GTA6", "#GTAVI"],
+    "niche": ["#kick", "#kickclips", "#kickcolombia", "#streamercolombiano", "#gta", "#grandtheftauto"],
+    "broad": ["#parati", "#humor", "#risas", "#colombia", "#latam", "#clips"],
+    "reserve": ["#westcoltwitch", "#kickstreamer", "#streamer", "#gamer"],
+    "rp": ["#gtaroleplay", "#colombiarp"],
+    "people": {
+      "westcol": ["#westcol", "#westcolclips", "#westcoltiktoker"],
+      "lonche": ["#lonchedehuevito"],
+      "willito": ["#willito"],
+      "lasapa": ["#lasapa", "#lasapaaaaa", "#leandroloaiza"],
+      "elchanty": ["#elchanty", "#yosoychanty"],
+      "samulx": ["#samulx", "#samulxclips"],
+      "mayosorio": ["#mayosorio"],
+      "mrstiventc": ["#mrstiventc", "#mrstiven"],
+      "juanferlamata": ["#juanferlamata"]
+    },
+    "to_verify": ["#vicecity", "#gta6launch", "#gta6latam", "#laganga", "#nuevaganga", "#lagangawestcol",
+                  "#streamfighters5", "#streamfighters", "#streamfighters4", "#kingsleague", "#medellin", "#bogota",
+                  "#paisa", "#pelicanger", "#elmune", "#reydelacity"],
+    "count_tiktok": 5,
+    "count_shorts": 3,
+    "shorts_tag": true
+  },
+  "gtahispa": {
+    "always": ["#GTA6", "#GTAVI"],
+    "niche": ["#gta6clips", "#rockstargames", "#twitch", "#clipsdetwitch", "#twitchclips"],
+    "broad": ["#fyp", "#viral", "#reaccion", "#meme", "#polemica", "#epico", "#españa"],
+    "reserve": ["#gaming", "#videojuegos", "#streamers"],
+    "rp": ["#gtarp", "#marbellavice", "#fivem", "#realrp", "#clipsrp", "#spainrp"],
+    "people": {
+      "illojuan": ["#illojuan"],
+      "elxokas": ["#elxokas", "#xokas"],
+      "rubius": ["#rubius", "#elrubius", "#rubiusclips"],
+      "ibai": ["#ibai", "#ibaillanos", "#ibaiclips"],
+      "auronplay": ["#auronplay", "#auron"],
+      "knekro": ["#knekro", "#knekroclips"],
+      "thegrefg": ["#thegrefg", "#grefg"],
+      "alexby11": ["#alexby11", "#alexby"]
+    },
+    "to_verify": ["#gta6release", "#gta6dia1", "#gta6lanzamiento", "#gta6trailer", "#gta6new", "#luciaandjason",
+                  "#gtaviclips", "#gta6esp", "#gta6espana", "#twitchespana", "#gtarpespana", "#spreen", "#vegetta777",
+                  "#mayichi", "#reven", "#elmariana", "#lavelada", "#velada6", "#laveladadelaño", "#tiktokespaña",
+                  "#leonida"],
+    "count_tiktok": 5,
+    "count_shorts": 3,
+    "shorts_tag": true
+  }
+}

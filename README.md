@@ -7,6 +7,15 @@ Convierte un clip horizontal de stream en un video vertical 1080x1920: **cámara
 2. Doble clic en `run.bat` (Windows) o `./run.sh` (Mac/Linux). Crea el entorno solo y abre http://127.0.0.1:5000.
 3. Windows puede mostrar el aviso de SmartScreen: "Más información" → "Ejecutar de todas formas". Si la descarga de ffmpeg falla, instálalo a mano con `winget install Gyan.FFmpeg` y ciérrala y ábrela de nuevo.
 
+## Instalar en Mac
+1. Instala [Homebrew](https://brew.sh) si no lo tienes, y en Terminal: `brew install python@3.12 ffmpeg`.
+2. Descarga el proyecto: https://github.com/jea022/clipmaker/archive/refs/heads/main.zip y descomprímelo donde quieras dejarlo.
+3. En Terminal, dentro de esa carpeta: `./run.sh`. La primera vez crea el entorno y abre el navegador. **En Mac usa el puerto 5055** (el 5000 lo ocupa AirPlay Receiver); si el 5055 también está ocupado: `./run.sh 5056`.
+4. Acceso directo: `./crear_acceso_directo.sh` crea `Clipmaker.command` en el escritorio.
+5. Si macOS bloquea los archivos: `chmod +x run.sh crear_acceso_directo.sh` y `xattr -dr com.apple.quarantine .` dentro de la carpeta; o clic derecho → Abrir.
+6. Para llevar tus ajustes desde otro equipo, copia la carpeta `data/` (y `secrets/` si subes a YouTube).
+Las actualizaciones automáticas funcionan igual que en Windows.
+
 ## Acceso directo en el escritorio
 Una vez, doble clic en `crear_acceso_directo.bat` (Windows) o ejecuta `./crear_acceso_directo.sh` (Mac/Linux). Aparece "Clipmaker" en el escritorio; al abrirlo arranca la app y se abre el navegador. No muevas la carpeta del proyecto después (si la mueves, vuelve a ejecutarlo).
 
@@ -23,6 +32,16 @@ Una vez, doble clic en `crear_acceso_directo.bat` (Windows) o ejecuta `./crear_a
 6. **Crear video**, descarga y copia los textos.
 
 Por terminal: `python clipmaker.py clip.mp4 "Título" --layout templates/wganga.json -o salida.mp4`, o `--batch carpeta` (cada `clip.mp4` con su `clip.txt` de título). Variaciones: `--preset clip_image --image foto.jpg`, `--preset clip_clip --clip-b otro.mp4 --audio b`, `--preset clip_blur`; `--list-presets` las muestra todas junto con los estilos y tipografías. Texto superpuesto: `--title-style box_white --font poppins --split 45 --offset 0 --font-size 56 --lowercase`.
+
+## Hashtags
+Cada cuenta tiene su lista recomendada (basada en una investigación de hashtags reales, ver abajo) y puedes editarla en la sección **5 · Hashtags de la cuenta**:
+- **Siempre**: salen en todos los clips (por defecto `#GTA6 #GTAVI`).
+- **Personas**: los hashtags de quien marques en el clip (el primero es el principal; los demás rotan).
+- **Nicho, Alcance y Reserva**: rotan **por turnos**, así cada clip lleva un set distinto y todos se usan por igual. "Ver cómo se reparten" lo muestra con los próximos clips y cuántas veces sale cada uno en 30.
+- **Solo clips de GTA RP**: se usan únicamente si eliges "GTA V / GTA RP" en *Juego del clip*; en un clip de GTA VI serían engañosos y no se ponen.
+- **Por verificar**: no se usan nunca; es donde esperan los hashtags sin evidencia (compruébalos en la app antes de moverlos).
+- Cantidad: 5 en TikTok y 3 en Shorts (más `#Shorts`). Esos topes vienen de prensa, no están confirmados por TikTok/YouTube.
+Las dos cuentas comparten solo `#GTA6` y `#GTAVI`. Tus cambios se guardan en `data/hashtags.json` y las actualizaciones no los tocan. Desde la terminal: `python captions.py wganga "Título" westcol samulx`.
 
 ## Tu diseño de Canva
 Exporta 1080x1920: un PNG de **fondo** y uno **transparente** de overlay. Cópialos a `templates/` y en `templates/<cuenta>.json` cambia `background_png` y `overlay_png`. Las zonas (`cam_zone`, `title_zone`, `game_zone`) se ajustan en el mismo archivo.

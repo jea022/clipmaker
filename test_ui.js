@@ -186,11 +186,62 @@ const path = require('path');
   checks.factoryRestoresText = (await page.$eval('input[name=tstyle]:checked', e => e.value)) === 'band'
     && (await page.$eval('input[name=tfont]:checked', e => e.value)) === 'inter'
     && (await page.$eval('#upper', e => e.checked)) && (await visible('#grp-band'));
+
+  // i) editor de hashtags
+  const val = sel => page.$eval(sel, e => e.value);
+  await page.waitForFunction(() => document.querySelector('#ht-always').value !== '');
+  checks.hashFormLoaded = (await val('#ht-always')) === '#GTA6 #GTAVI' && (await val('#ht-people')).includes('westcol: #westcol #westcolclips');
+  checks.hashCounts = (await val('#ht-count-tiktok')) === '5' && (await val('#ht-count-shorts')) === '3' && await page.$eval('#ht-shorts-tag', e => e.checked);
+  checks.hashStatusRecommended = (await page.textContent('#ht-msg')).includes('recomendada');
+  await page.selectOption('#account', 'gtahispa');
+  checks.hashOtherAccount = (await val('#ht-niche')).includes('#gta6clips') && (await val('#ht-people')).includes('illojuan') && !(await val('#ht-people')).includes('westcol');
+  await page.selectOption('#account', 'wganga');
+  await page.click('#hashsec summary');
+  await page.click('#ht-preview');
+  await page.waitForFunction(() => document.querySelectorAll('#ht-samples .sample-cap').length === 6);
+  const samples = await page.$$eval('#ht-samples .sample-cap', els => els.map(e => e.textContent));
+  checks.hashSixSamples = samples.every(s => (s.match(/#/g) || []).length === 5) && new Set(samples).size === 6;
+  checks.hashUsageShown = (await page.$$('#ht-usage span')).length >= 8 && (await page.textContent('#ht-usage span')).includes('×30');
+  await page.selectOption('#clipgame', 'gta5rp');
+  checks.hashGameClearsSamples = (await page.$$('#ht-samples .sample-cap')).length === 0;
+  await page.click('#ht-preview');
+  await page.waitForFunction(() => document.querySelectorAll('#ht-samples .sample-cap').length === 6);
+  const rpTxt = (await page.$$eval('#ht-samples .sample-cap', els => els.map(e => e.textContent))).join(' ');
+  checks.hashRpGame = !rpTxt.includes('#GTA6') && rpTxt.includes('#gtaroleplay');
+  await page.selectOption('#clipgame', 'gta6');
+  await page.fill('#ht-niche', '#aaa1 #bbb1 #ccc1');
+  await page.fill('#ht-people', (await val('#ht-people')) + '\nana: #ana1 #ana2');
+  await page.click('#ht-save');
+  await page.waitForFunction(() => /guardados/.test(document.querySelector('#ht-msg').textContent));
+  checks.hashSaved = (await page.$eval('#ht-msg', e => e.className)).includes('ok') && (await page.textContent('#ht-msg')).length > 0;
+  checks.hashNewPersonChip = (await page.$$('#people input[value="ana"]')).length === 1;
+  await page.fill('#ht-niche', '#ho!la');
+  await page.click('#ht-save');
+  await page.waitForFunction(() => /no válido/i.test(document.querySelector('#ht-msg').textContent));
+  checks.hashInvalidRejected = (await page.$eval('#ht-msg', e => e.className)).includes('err') && (await page.$$('#people input[value="ana"]')).length === 1;
+  await page.fill('#ht-niche', '#aaa1 #bbb1 #ccc1');
+  await page.fill('#ht-people', 'sin dos puntos');
+  await page.click('#ht-save');
+  await page.waitForFunction(() => /Falta/.test(document.querySelector('#ht-msg').textContent));
+  checks.hashPeopleLineRejected = true;
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#account option'));
+  await page.selectOption('#account', 'wganga');
+  await page.waitForFunction(() => document.querySelector('#ht-niche').value !== '');
+  checks.hashSavedSurvivesReload = (await val('#ht-niche')) === '#aaa1 #bbb1 #ccc1' && (await page.$$('#people input[value="ana"]')).length === 1
+    && (await page.textContent('#ht-msg')).includes('personalizada');
+  await page.click('#hashsec summary');
+  await page.click('#ht-reset');
+  await page.waitForFunction(() => /recomendados/.test(document.querySelector('#ht-msg').textContent));
+  checks.hashResetWorks = (await val('#ht-niche')).includes('#kick') && (await page.$$('#people input[value="ana"]')).length === 0
+    && (await page.textContent('#ht-msg')).includes('restablecieron');
   await browser.close();
 
   const failed = Object.entries(checks).filter(([, v]) => v !== true).map(([k]) => k);
   console.log(JSON.stringify({ checks, errors }, null, 2));
-  const ok = failed.length === 0 && errors.length === 0;
+  const unexpected = errors.filter(e => !/status of 400/.test(e));
+  const expected400 = errors.length - unexpected.length;
+  const ok = failed.length === 0 && unexpected.length === 0 && expected400 <= 1;
   console.log(ok ? 'UI PASS' : `UI FAIL: ${failed.join(', ')}`);
   process.exit(ok ? 0 : 1);
 })();

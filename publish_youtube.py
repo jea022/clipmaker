@@ -40,9 +40,9 @@ def validate_video(path):
     return {"width": w, "height": h, "duration": dur}
 
 
-def build_body(account, title, people, privacy):
-    cap = captions.generate(account, title, people)
-    tags = [t.lstrip("#") for t in cap["hashtags"]][:15]
+def build_body(account, title, people, privacy, cursor=0, game="gta6"):
+    cap = captions.generate(account, title, people, cursor, game)
+    tags = [t.lstrip("#") for t in cap["yt_hashtags"]][:15]
     return {
         "snippet": {
             "title": cap["yt_title"],
