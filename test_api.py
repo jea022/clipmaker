@@ -356,7 +356,7 @@ check("montaje en segundo plano con estilo invalido -> 400", start(jid, title_st
 # ---- hashtags: lista editable y reparto ----
 hv = c.get("/api/hashtags").json
 check("hashtags: devuelve las dos cuentas con config, recomendados y estado",
-      set(hv) == {"wganga", "gtahispa"} and all({"config", "defaults", "customized"} <= set(v) for v in hv.values()) and not hv["wganga"]["customized"])
+      set(hv) == {"wganga", "gtahispa", "gtaclipsboss"} and all({"config", "defaults", "customized"} <= set(v) for v in hv.values()) and not hv["wganga"]["customized"])
 check("hashtags: los recomendados traen GTA6/GTAVI y personas", hv["wganga"]["config"]["always"] == ["#GTA6", "#GTAVI"] and "westcol" in hv["wganga"]["config"]["people"])
 check("accounts: las personas salen de la lista de hashtags", "lonche" in c.get("/api/accounts").json["wganga"]["people"])
 
@@ -474,6 +474,14 @@ with mock.patch.object(webapp.updater, "update", side_effect=RuntimeError("detal
 with mock.patch.object(webapp.updater, "update", side_effect=_upd.UpdateError("Ya tienes la última versión")):
     check("update/apply UpdateError -> 400", c.post("/api/update/apply").status_code == 400)
 check("RESTART_CODE es 42 (lo espera run.bat/run.sh)", webapp.RESTART_CODE == 42)
+
+# --- cuenta @gtaclipsboss ---
+accs = c.get("/api/accounts").json
+check("cuentas: aparece @gtaclipsboss", accs.get("gtaclipsboss", {}).get("handle") == "@gtaclipsboss", list(accs))
+check("cuentas: @gtaclipsboss tiene su propia plantilla de marca", accs["gtaclipsboss"]["factory"] is not None and Path("templates/gtaclipsboss_bg.png").is_file())
+hh = c.get("/api/hashtags").json
+check("hashtags: @gtaclipsboss usa los mismos que @gtaHispaClips", hh["gtaclipsboss"]["defaults"] == hh["gtahispa"]["defaults"])
+check("hashtags: @gtaclipsboss tiene sus propios contadores", c.post("/api/render", json={"id": jid, "title": "Uno", "account": "gtaclipsboss"}).status_code == 200)
 
 print(f"\n{len(fails)} fallos")
 sys.exit(1 if fails else 0)

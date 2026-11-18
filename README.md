@@ -1,6 +1,6 @@
 # Clipmaker
 
-Convierte un clip horizontal de stream en un video vertical 1080x1920: **cámara arriba, título en el centro, gameplay abajo**, con la plantilla de cada cuenta (`@wganga_clips`, `@gtaHispaClips`). Genera también el caption y los hashtags.
+Convierte un clip horizontal de stream en un video vertical 1080x1920: **cámara arriba, título en el centro, gameplay abajo**, con la plantilla de cada cuenta (`@wganga_clips`, `@gtaHispaClips`, `@gtaclipsboss`). Genera también el caption y los hashtags.
 
 ## Instalar (una vez)
 1. Python 3.9+ (Windows: `winget install Python.Python.3.12`; Mac: `brew install python@3.12`). ffmpeg: en Windows se descarga solo la primera vez (~200 MB, a la carpeta `bin/`); en Mac: `brew install ffmpeg`.
@@ -55,7 +55,7 @@ Cada cuenta tiene su lista recomendada (basada en una investigación de hashtags
 - **Solo clips de GTA RP**: se usan únicamente si eliges "GTA V / GTA RP" en *Juego del clip*; en un clip de GTA VI serían engañosos y no se ponen.
 - **Por verificar**: no se usan nunca; es donde esperan los hashtags sin evidencia (compruébalos en la app antes de moverlos).
 - Cantidad: 5 en TikTok y 3 en Shorts (más `#Shorts`). Esos topes vienen de prensa, no están confirmados por TikTok/YouTube.
-Las dos cuentas comparten solo `#GTA6` y `#GTAVI`. Tus cambios se guardan en `data/hashtags.json` y las actualizaciones no los tocan. Desde la terminal: `python captions.py wganga "Título" westcol samulx`.
+`@wganga_clips` comparte con las demás solo `#GTA6` y `#GTAVI`; `@gtaclipsboss` (la cuenta de un amigo) usa la misma lista que `@gtaHispaClips`, pero cada cuenta lleva su propio reparto y puedes editarlas por separado. Tus cambios se guardan en `data/hashtags.json` y las actualizaciones no los tocan. Desde la terminal: `python captions.py wganga "Título" westcol samulx`.
 
 ## Tu diseño de Canva
 Exporta 1080x1920: un PNG de **fondo** y uno **transparente** de overlay. Cópialos a `templates/` y en `templates/<cuenta>.json` cambia `background_png` y `overlay_png`. Las zonas (`cam_zone`, `title_zone`, `game_zone`) se ajustan en el mismo archivo.

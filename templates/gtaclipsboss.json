@@ -1,0 +1,51 @@
+{
+  "canvas": [
+    1080,
+    1920
+  ],
+  "background_color": "#0b0b14",
+  "background_png": "templates/gtaclipsboss_bg.png",
+  "overlay_png": "templates/gtaclipsboss_overlay.png",
+  "top_zone": [
+    0,
+    0,
+    1080,
+    760
+  ],
+  "title_zone": [
+    0,
+    760,
+    1080,
+    320
+  ],
+  "bottom_zone": [
+    0,
+    1080,
+    1080,
+    840
+  ],
+  "cam_crop": [
+    0.7,
+    0.02,
+    0.28,
+    0.32
+  ],
+  "game_crop": [
+    0.0,
+    0.0,
+    1.0,
+    1.0
+  ],
+  "title": {
+    "font": "fonts/InterDisplay-Bold.otf",
+    "max_size": 96,
+    "min_size": 44,
+    "color": "#ffffff",
+    "stroke_color": "#000000",
+    "stroke_width": 6,
+    "uppercase": true,
+    "padding": 48
+  },
+  "overlay_clean_png": "templates/gtaclipsboss_overlay_clean.png",
+  "accent_color": "#ffc400"
+}

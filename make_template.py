@@ -13,6 +13,7 @@ W, H = 1080, 1920
 BRANDS = {
     "wganga": {"handle": "@wganga_clips", "accent": "#ff7a00", "bg_top": "#1a0f05", "bg_bottom": "#0b0b14"},
     "gtahispa": {"handle": "@gtaHispaClips", "accent": "#ff2e93", "bg_top": "#1a0518", "bg_bottom": "#0b0b14"},
+    "gtaclipsboss": {"handle": "@gtaclipsboss", "accent": "#ffc400", "bg_top": "#1a1405", "bg_bottom": "#0b0b14"},
 }
 
 

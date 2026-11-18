@@ -30,6 +30,15 @@ ACCOUNTS = {
             "Sigue para más clips de GTA VI",
         ],
     },
+    "gtaclipsboss": {
+        "handle": "@gtaclipsboss",
+        "ctas": [
+            "¿Lo conocías?",
+            "¿Con quién lo jugarías?",
+            "¿Cuál es tu momento favorito?",
+            "Sigue para más clips de GTA VI",
+        ],
+    },
 }
 
 GAMES = ("gta6", "gta5rp")
