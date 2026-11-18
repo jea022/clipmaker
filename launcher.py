@@ -82,9 +82,17 @@ def pid_alive(pid):
     return True
 
 
+def reuse_option():
+    """En Windows SO_REUSEADDR deja abrir un puerto que YA esta en uso (da un falso 'libre'); alli se usa la
+    opcion exclusiva. En Mac/Linux SO_REUSEADDR si falla correctamente con un puerto ocupado."""
+    if IS_WIN and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+        return socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE
+    return socket.SOL_SOCKET, socket.SO_REUSEADDR
+
+
 def port_free(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.setsockopt(*reuse_option(), 1)
         try:
             s.bind(("127.0.0.1", port))
         except OSError:
@@ -145,9 +153,19 @@ def write_state(port, mode):
     STATE.write_text(json.dumps({"pid": os.getpid(), "port": port, "mode": mode, "started": time.time()}))
 
 
+def probe_legacy(port, timeout=0.6):
+    """Una copia ANTERIOR de Clipmaker (sin /api/ping): se reconoce por su lista de variaciones."""
+    try:
+        with _NO_PROXY.open(f"http://127.0.0.1:{port}/api/presets", timeout=timeout) as r:
+            data = json.loads(r.read(20000).decode("utf-8"))
+    except Exception:
+        return False
+    return isinstance(data, list) and any(isinstance(x, dict) and x.get("id") == "cam_game" for x in data)
+
+
 def existing_instance():
-    """Una copia ya abierta: la que anota el lanzador o, si se abrió con la consola (run.bat/run.sh), la que
-    responda en los puertos habituales."""
+    """Una copia ya abierta: la que anota el lanzador o, si se abrió con la consola (run.bat/run.sh) o es de una
+    version anterior, la que responda en los puertos habituales."""
     st = read_state()
     if st and isinstance(st.get("port"), int):
         info = ping(st["port"])
@@ -157,6 +175,8 @@ def existing_instance():
         info = ping(port, timeout=0.4)
         if info and info.get("app") == "clipmaker":
             return {"port": port, "mode": "app"}
+        if probe_legacy(port):
+            return {"port": port, "mode": "legacy"}
     return None
 
 
@@ -450,14 +470,27 @@ def spawn_app(port):
                             stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, **kwargs)
 
 
-def wait_ready(port, timeout=60):
+def wait_ready(port, timeout=60, proc=None):
     end = time.time() + timeout
     while time.time() < end:
         info = ping(port)
         if info and info.get("app") == "clipmaker":
             return True
+        if proc is not None and proc.poll() is not None:
+            return False
         time.sleep(0.4)
     return False
+
+
+def watch_ready(port, proc, on_ready, timeout=60):
+    """Espera a que la app responda; si no lo hace, avisa en vez de esperar en silencio."""
+    if wait_ready(port, timeout, proc):
+        on_ready()
+    elif proc.poll() is None:
+        log(f"la app no respondió en el puerto {port} tras {timeout}s (respuesta de /api/ping: {ping(port)})")
+        notify("Clipmaker", f"La app no respondió en el puerto {port}. Puede que otra copia de Clipmaker u otro "
+                            f"programa lo esté usando. Cierra las ventanas negras de Clipmaker y vuelve a abrirlo. "
+                            f"Más detalles en {LOG}")
 
 
 def supervise(spawn, port, on_ready=None, prepare=None, max_fast_crashes=3, pause=1.0):
@@ -468,7 +501,7 @@ def supervise(spawn, port, on_ready=None, prepare=None, max_fast_crashes=3, paus
         proc = spawn()
         log(f"app arrancada (pid {proc.pid}) en el puerto {port}")
         if on_ready:
-            threading.Thread(target=lambda: wait_ready(port) and on_ready(), daemon=True).start()
+            threading.Thread(target=watch_ready, args=(port, proc, on_ready), daemon=True).start()
             on_ready = None
         code = proc.wait()
         log(f"la app terminó con código {code}")
@@ -545,6 +578,10 @@ def main(argv=None):
     inst = existing_instance()
     if inst:
         print(f"Clipmaker ya está abierto en http://127.0.0.1:{inst['port']}")
+        if inst.get("mode") == "legacy":
+            notify("Clipmaker", f"Ya hay una copia anterior de Clipmaker abierta (puerto {inst['port']}, la ventana negra "
+                                f"de run.bat). Se abre esa. Para pasar al lanzador nuevo: pulsa «Actualizar ahora» en esa "
+                                f"página, luego «Cerrar Clipmaker», cierra la ventana negra y abre Clipmaker otra vez.")
         open_browser(inst["port"], not a.no_browser)
         return 0
     if not acquire_lock():

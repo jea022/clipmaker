@@ -138,10 +138,108 @@ check("3 caidas rapidas seguidas: se rinde, avisa y devuelve el codigo", mod.sup
 notes.clear()
 check("una caida aislada se recupera (reinicia solo)", mod.supervise(seq_spawn([3, 0]), 1, pause=0) == 0 and notes == [])
 ready = []
-mod.wait_ready = lambda port, timeout=60: True
+mod.wait_ready = lambda port, timeout=60, proc=None: True
 mod.supervise(seq_spawn([0]), 1, on_ready=lambda: ready.append(1), pause=0)
 time.sleep(0.3)
 check("on_ready se avisa una vez cuando la app responde", ready == [1], ready)
+
+# --- Windows: la comprobacion de puerto debe ser exclusiva ---
+check("Mac/Linux: el puerto se comprueba con SO_REUSEADDR", mod.reuse_option() == (socket.SOL_SOCKET, socket.SO_REUSEADDR))
+had_excl = hasattr(socket, "SO_EXCLUSIVEADDRUSE")
+if not had_excl:
+    socket.SO_EXCLUSIVEADDRUSE = -5
+mod.IS_WIN = True
+check("Windows: el puerto se comprueba con la opcion exclusiva (SO_REUSEADDR daria un falso 'libre')",
+      mod.reuse_option() == (socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE))
+mod.IS_WIN = False
+if not had_excl:
+    del socket.SO_EXCLUSIVEADDRUSE
+
+
+# --- una copia ANTERIOR (sin /api/ping) ya abierta ---
+class Legacy(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/api/presets":
+            body = json.dumps([{"id": "cam_game", "label": "Camara arriba"}]).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, *a):
+        pass
+
+
+class Foreign(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(404)
+        self.end_headers()
+
+    def log_message(self, *a):
+        pass
+
+
+class Healthy(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = json.dumps({"app": "clipmaker", "version": "9"}).encode()
+        self.send_response(200 if self.path == "/api/ping" else 404)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *a):
+        pass
+
+
+def serve(handler):
+    s = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=s.serve_forever, daemon=True).start()
+    return s, s.server_address[1]
+
+
+legacy_srv, lp = serve(Legacy)
+foreign_srv, fp = serve(Foreign)
+healthy_srv, hp = serve(Healthy)
+ml = load_launcher(box, {"CLIPMAKER_PORT_BASE": str(lp)})
+check("detecta una copia ANTERIOR (responde 404 a /api/ping) y la marca como legacy", ml.existing_instance() == {"port": lp, "mode": "legacy"}, ml.existing_instance())
+mf = load_launcher(box, {"CLIPMAKER_PORT_BASE": str(fp)})
+check("otro programa que responde 404 a todo NO se confunde con Clipmaker", mf.existing_instance() is None)
+check("y su puerto se salta al elegir el de la app", mf.pick_port(fp) != fp)
+mh = load_launcher(box, {"CLIPMAKER_PORT_BASE": str(hp)})
+check("una copia actual se detecta como app", mh.existing_instance() == {"port": hp, "mode": "app"}, mh.existing_instance())
+box_l = make_box()
+rl = subprocess.run([str(HERE / ".venv" / "bin" / "python"), str(box_l / "launcher.py"), "--no-browser"], cwd=box_l,
+                    env=dict(os.environ, CLIPMAKER_NO_BROWSER="1", CLIPMAKER_PORT_BASE=str(lp)), capture_output=True, text=True, timeout=30)
+check("con una copia anterior abierta: avisa, abre esa y NO arranca otra encima",
+      rl.returncode == 0 and "ya está abierto" in rl.stdout and "copia anterior" in rl.stderr and ping(lp + 1) is None
+      and not (box_l / "data" / "launcher.json").exists(), (rl.stdout.strip(), rl.stderr.strip()[:80]))
+
+# --- esperar a que la app responda: avisar, no callar ---
+notes2, called = [], []
+ml.notify = lambda t, x: notes2.append(x)
+sleeper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+t0 = time.time()
+ml.watch_ready(lp, sleeper, lambda: called.append(1), timeout=1.5)
+check("si la app no responde avisa con el puerto y el registro (y no abre el navegador)",
+      called == [] and len(notes2) == 1 and str(lp) in notes2[0] and "clipmaker.log" in notes2[0] and 1.2 < time.time() - t0 < 6, notes2)
+sleeper.kill()
+sleeper.wait()
+dead = subprocess.Popen([sys.executable, "-c", "pass"])
+dead.wait()
+notes2.clear()
+t0 = time.time()
+ml.watch_ready(lp, dead, lambda: called.append(1), timeout=30)
+check("si el proceso de la app ya murio no espera ni molesta", time.time() - t0 < 3 and notes2 == [] and called == [], time.time() - t0)
+alive = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+mh.watch_ready(hp, alive, lambda: called.append("listo"), timeout=10)
+alive.kill()
+alive.wait()
+check("cuando la app responde de verdad se avisa para abrir el navegador", called == ["listo"], called)
+for s in (legacy_srv, foreign_srv, healthy_srv):
+    s.shutdown()
 
 # --- bloqueo de una sola copia ---
 mod.DATA.mkdir(exist_ok=True)

@@ -479,8 +479,10 @@ def api_shutdown():
 
 
 def port_busy(port):
+    # En Windows SO_REUSEADDR deja abrir un puerto que ya esta en uso (falso "libre"): alli se usa la opcion exclusiva.
+    opt = getattr(socket, "SO_EXCLUSIVEADDRUSE", None) if os.name == "nt" else None
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.setsockopt(socket.SOL_SOCKET, opt or socket.SO_REUSEADDR, 1)
         try:
             s.bind(("127.0.0.1", port))
         except OSError:

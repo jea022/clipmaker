@@ -27,6 +27,11 @@ El icono abre Clipmaker **sin ventana de consola**: la app corre en segundo plan
 - No muevas la carpeta del proyecto después de crear el icono (si la mueves, vuelve a ejecutar el instalador del acceso directo).
 - Si ya usabas un acceso directo anterior (el que abría `run.bat` con la ventana negra), vuelve a ejecutar `crear_acceso_directo.bat` para reemplazarlo.
 
+### Si algo no abre
+- **La ventana negra se llena de líneas `GET /api/ping 404`**: hay una copia antigua de Clipmaker abierta que no entiende al lanzador nuevo. Ciérrala (cierra esa ventana negra; si no se cierra, en el Administrador de tareas termina los procesos `python.exe` y `pythonw.exe`) y abre Clipmaker otra vez. Desde la versión 1.7.1 el lanzador la reconoce y te avisa.
+- **No se abre nada**: abre `data\clipmaker.log` (o `data/clipmaker.log`); ahí queda escrito por qué. Para ver los errores en pantalla usa `run.bat` / `run.sh`.
+- **"El puerto está ocupado"**: otra copia o programa usa el 5000 (en Mac el 5055). Ciérralo, o abre con otro puerto: `run.bat` no lo permite, pero `./run.sh 5056` sí.
+
 ## Usar
 1. Arrastra el clip principal; debajo del cuadro verás el progreso de la subida.
 2. Elige la **variación**: cámara+gameplay, gameplay+cámara, video+imagen, imagen+video, dos videos o video con fondo difuminado. Si la variación lo pide, sube la imagen o el segundo video (si dura menos que el principal, se repite; puedes elegir de cuál sale el audio).
