@@ -13,12 +13,16 @@ Una vez, doble clic en `crear_acceso_directo.bat` (Windows) o ejecuta `./crear_a
 ## Usar
 1. Arrastra el clip principal; debajo del cuadro verás el progreso de la subida.
 2. Elige la **variación**: cámara+gameplay, gameplay+cámara, video+imagen, imagen+video, dos videos o video con fondo difuminado. Si la variación lo pide, sube la imagen o el segundo video (si dura menos que el principal, se repite; puedes elegir de cuál sale el audio).
-3. Escribe el título y ajusta el **alto de la franja del título** y el **tamaño de letra** con los deslizadores (si el título no cabe, la letra se achica sola; la cámara y el gameplay ocupan el resto). Elige la cuenta y marca quién sale.
-4. En **Recortes del clip** elige si dibujas la **cámara** (rojo) o el **gameplay** (verde) y arrastra con el ratón sobre la imagen. "Gameplay completo" quita el recorte. "Guardar como valores por defecto" recuerda recortes, franja y letra para esa cuenta; "Restablecer valores de fábrica" los borra.
+3. Escribe el título y elige el **estilo del texto**:
+   - **Franja** (clásico): una franja oscura entre los dos videos; ajustas su **alto** y el **tamaño de letra** (si el título no cabe, la letra se achica sola; la cámara y el gameplay ocupan el resto).
+   - **Superpuesto** (caja blanca, negra o amarilla, o texto con contorno blanco o amarillo): los dos videos quedan **pegados** y el texto va encima, centrado en la unión. Con **Parte de arriba** repartes el alto entre ambos videos (30 a 70 %) y con **Subir / bajar el texto** lo mueves desde la unión.
+   - Elige la **tipografía** (Inter, Poppins, Anton, Bebas Neue, Archivo Black, Bangers, Luckiest Guy; todas con ñ y tildes) y si va **todo en mayúsculas** o tal como lo escribes.
+   - Elige la cuenta y marca quién sale.
+4. En **Recortes del clip** elige si dibujas la **cámara** (rojo) o el **gameplay** (verde) y arrastra con el ratón sobre la imagen. "Gameplay completo" quita el recorte. "Guardar como valores por defecto" recuerda recortes, estilo, tipografía, franja, reparto y letra para esa cuenta; "Restablecer valores de fábrica" los borra.
 5. La **vista previa** de la derecha se actualiza sola con cada cambio (puedes apagarla o pulsar "Actualizar").
 6. **Crear video**, descarga y copia los textos.
 
-Por terminal: `python clipmaker.py clip.mp4 "Título" --layout templates/wganga.json -o salida.mp4`, o `--batch carpeta` (cada `clip.mp4` con su `clip.txt` de título). Variaciones: `--preset clip_image --image foto.jpg`, `--preset clip_clip --clip-b otro.mp4 --audio b`, `--preset clip_blur`; `--list-presets` las muestra todas.
+Por terminal: `python clipmaker.py clip.mp4 "Título" --layout templates/wganga.json -o salida.mp4`, o `--batch carpeta` (cada `clip.mp4` con su `clip.txt` de título). Variaciones: `--preset clip_image --image foto.jpg`, `--preset clip_clip --clip-b otro.mp4 --audio b`, `--preset clip_blur`; `--list-presets` las muestra todas junto con los estilos y tipografías. Texto superpuesto: `--title-style box_white --font poppins --split 45 --offset 0 --font-size 56 --lowercase`.
 
 ## Tu diseño de Canva
 Exporta 1080x1920: un PNG de **fondo** y uno **transparente** de overlay. Cópialos a `templates/` y en `templates/<cuenta>.json` cambia `background_png` y `overlay_png`. Las zonas (`cam_zone`, `title_zone`, `game_zone`) se ajustan en el mismo archivo.

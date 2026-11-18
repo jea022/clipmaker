@@ -94,6 +94,11 @@ def wrap_lines(draw, text, font, max_w, stroke):
     return lines
 
 
+def font_path(cfg):
+    fid = cfg.get("font")
+    return resolve(FONTS[fid][1]) if fid in FONTS else resolve(cfg["title"]["font"])
+
+
 def render_title(text, zone, cfg, out_png):
     _, _, zw, zh = zone
     t = cfg["title"]
@@ -107,7 +112,7 @@ def render_title(text, zone, cfg, out_png):
     stroke = t["stroke_width"]
     size = t["max_size"]
     while True:
-        font = ImageFont.truetype(str(resolve(t["font"])), size)
+        font = ImageFont.truetype(str(font_path(cfg)), size)
         lines = wrap_lines(draw, text, font, max_w, stroke)
         line_h = int(size * 1.15)
         fits = len(lines) * line_h <= max_h and all(
@@ -190,6 +195,25 @@ PRESETS = {
     },
 }
 AUDIO_CHOICES = ("a", "b", "mute")
+FONTS = {
+    "inter": ("Inter", "fonts/InterDisplay-Bold.otf"),
+    "poppins": ("Poppins", "fonts/Poppins-ExtraBold.ttf"),
+    "anton": ("Anton", "fonts/Anton-Regular.ttf"),
+    "bebas": ("Bebas Neue", "fonts/BebasNeue-Regular.ttf"),
+    "archivo": ("Archivo Black", "fonts/ArchivoBlack-Regular.ttf"),
+    "bangers": ("Bangers", "fonts/Bangers-Regular.ttf"),
+    "luckiest": ("Luckiest Guy", "fonts/LuckiestGuy-Regular.ttf"),
+}
+STYLES = {
+    "band": {"label": "Franja"},
+    "box_white": {"label": "Caja blanca", "text": "#111111", "box": "#ffffff"},
+    "box_black": {"label": "Caja negra", "text": "#ffffff", "box": "#111111"},
+    "box_yellow": {"label": "Caja amarilla", "text": "#111111", "box": "#ffd400"},
+    "outline": {"label": "Contorno blanco", "text": "#ffffff", "box": None},
+    "outline_yellow": {"label": "Contorno amarillo", "text": "#ffe600", "box": None},
+}
+SPLIT_RANGE = (30, 70)
+OFFSET_RANGE = (-500, 500)
 TITLE_HEIGHT_RANGE = (120, 560)
 FONT_SIZE_RANGE = (30, 200)
 MIN_BOX = 0.02
@@ -219,7 +243,8 @@ def _number(value, lo, hi, what):
     return int(round(v))
 
 
-def apply_overrides(cfg, cam=None, game=None, title_height=None, font_size=None):
+def apply_overrides(cfg, cam=None, game=None, title_height=None, font_size=None, title_style=None, font=None,
+                    split=None, offset=None, uppercase=None):
     """Devuelve una copia de cfg con recortes, alto de franja y tamano de letra personalizados."""
     cfg = copy.deepcopy(cfg)
     if cam is not None:
@@ -238,6 +263,22 @@ def apply_overrides(cfg, cam=None, game=None, title_height=None, font_size=None)
         fs = _number(font_size, *FONT_SIZE_RANGE, "El tamaño de letra")
         cfg["title"]["max_size"] = fs
         cfg["title"]["min_size"] = min(cfg["title"].get("min_size", fs), fs)
+    if title_style is not None:
+        if not isinstance(title_style, str) or title_style not in STYLES:
+            raise ValueError("Estilo de texto desconocido")
+        cfg["title_style"] = title_style
+    if font is not None:
+        if not isinstance(font, str) or font not in FONTS:
+            raise ValueError("Tipografía desconocida")
+        cfg["font"] = font
+    if split is not None:
+        cfg["title_split"] = _number(split, *SPLIT_RANGE, "El reparto arriba/abajo")
+    if offset is not None:
+        cfg["title_offset"] = _number(offset, *OFFSET_RANGE, "El desplazamiento del texto")
+    if uppercase is not None:
+        if not isinstance(uppercase, bool):
+            raise ValueError("Mayúsculas debe ser sí o no")
+        cfg["title"]["uppercase"] = uppercase
     return cfg
 
 
@@ -272,10 +313,18 @@ def _even(v):
     return v - v % 2
 
 
+def overlay_mode(cfg):
+    return cfg.get("title_style", "band") != "band"
+
+
 def zone_of(cfg, preset, name):
     spec_z = PRESETS[preset].get("zones", {})
     cw, ch = cfg["canvas"]
     th = cfg.get("title_height")
+    if overlay_mode(cfg) and "title" not in spec_z and name in ("top", "bottom", "title"):
+        split = _even(round(ch * cfg.get("title_split", 50) / 100))
+        return {"top": [0, 0, cw, split], "title": [0, split, cw, 0],
+                "bottom": [0, split, cw, ch - split]}[name]
     base = {
         "top": cfg.get("top_zone", cfg.get("cam_zone")),
         "bottom": cfg.get("bottom_zone", cfg.get("game_zone")),
@@ -298,6 +347,49 @@ def zone_of(cfg, preset, name):
             return [0, top_h, cw, th]
         return [0, top_h + th, cw, ch - top_h - th]
     return list(base[name])
+
+
+def render_title_overlay(text, cfg, out_png):
+    """Titulo superpuesto: caja redondeada o texto con contorno, del tamano justo. Devuelve (ancho, alto)."""
+    st = STYLES[cfg["title_style"]]
+    t = cfg["title"]
+    text = clean_title(text)
+    if t.get("uppercase"):
+        text = text.upper()
+    cw, _ = cfg["canvas"]
+    boxed = st.get("box")
+    probe = ImageDraw.Draw(Image.new("RGBA", (8, 8)))
+    fpath = str(font_path(cfg))
+    size, max_w, max_h = t["max_size"], int(cw * 0.92), 640
+    while True:
+        font = ImageFont.truetype(fpath, size)
+        padx, pady = (round(size * 0.5), round(size * 0.3)) if boxed else (round(size * 0.12), round(size * 0.1))
+        stroke = 0 if boxed else max(3, round(size * 0.09))
+        lines = wrap_lines(probe, text, font, max_w - 2 * padx - 2 * stroke, stroke)
+        lh = int(size * 1.2)
+        w = int(max(probe.textlength(l, font=font) for l in lines)) + 2 * padx + 2 * stroke
+        h = len(lines) * lh + 2 * pady
+        if (w <= max_w and h <= max_h) or size <= 20:
+            break
+        size -= 4
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    if boxed:
+        d.rounded_rectangle([0, 0, w - 1, h - 1], radius=max(10, round(size * 0.28)), fill=boxed)
+    for i, line in enumerate(lines):
+        d.text((w / 2, pady + i * lh + lh / 2), line, font=font, fill=st["text"], anchor="mm",
+               stroke_width=stroke, stroke_fill="#000000")
+    img.save(out_png)
+    return w, h
+
+
+def title_position(cfg, preset, tw, th):
+    """Esquina superior izquierda del titulo superpuesto: centrado en la union (o en la franja del titulo)."""
+    cw, ch = cfg["canvas"]
+    z = zone_of(cfg, preset, "title")
+    anchor = z[1] + (z[3] / 2 if "title" in PRESETS[preset].get("zones", {}) else 0)
+    y = int(round(anchor + cfg.get("title_offset", 0) - th / 2))
+    return (cw - tw) // 2, min(max(y, 0), ch - th)
 
 
 def render_lines(cfg, title_z, out_png):
@@ -350,7 +442,12 @@ def build(clip, title, cfg, out_path, no_cam=False, preset="cam_game", clip_b=No
         td = Path(td)
         bg, title_png = td / "bg.png", td / "title.png"
         render_background(cfg, bg)
-        render_title(title, title_z, cfg, title_png)
+        if overlay_mode(cfg):
+            tw, th = render_title_overlay(title, cfg, title_png)
+            title_pos = title_position(cfg, preset, tw, th)
+        else:
+            render_title(title, title_z, cfg, title_png)
+            title_pos = (title_z[0], title_z[1])
 
         dur_a = probe_duration(clip)
         seek = ["-ss", f"{min(1.0, dur_a * 0.4):.2f}"] if still else []
@@ -372,13 +469,13 @@ def build(clip, title, cfg, out_path, no_cam=False, preset="cam_game", clip_b=No
         inputs += ["-loop", "1", "-i", str(title_png)]
         idx["title"], n = n, n + 1
         accent, clean = cfg.get("accent_color"), cfg.get("overlay_clean_png")
-        dyn_lines = bool(accent and clean and not spec.get("clean_overlay"))
+        dyn_lines = bool(accent and clean and not spec.get("clean_overlay") and not overlay_mode(cfg))
         if dyn_lines:
             lines_png = td / "lines.png"
             render_lines(cfg, title_z, lines_png)
             inputs += ["-loop", "1", "-i", str(lines_png)]
             idx["lines"], n = n, n + 1
-        overlay = clean if (spec.get("clean_overlay") or dyn_lines) else None
+        overlay = clean if (spec.get("clean_overlay") or dyn_lines or overlay_mode(cfg)) else None
         overlay = overlay or cfg.get("overlay_png")
         if overlay:
             inputs += ["-loop", "1", "-i", str(resolve(overlay))]
@@ -426,7 +523,7 @@ def build(clip, title, cfg, out_path, no_cam=False, preset="cam_game", clip_b=No
         if "lines" in idx:
             f.append(f"[{last}][{idx['lines']}:v]overlay=0:0[ln]")
             last = "ln"
-        f.append(f"[{last}][{idx['title']}:v]overlay={title_z[0]}:{title_z[1]}[t]")
+        f.append(f"[{last}][{idx['title']}:v]overlay={title_pos[0]}:{title_pos[1]}[t]")
         last = "t"
         if "overlay" in idx:
             f.append(f"[{last}][{idx['overlay']}:v]overlay=0:0[ov]")
@@ -489,6 +586,11 @@ def main():
     p.add_argument("--game", help="recorte del gameplay: x,y,w,h en fracciones 0-1")
     p.add_argument("--title-height", type=float, help=f"alto de la franja del título en px {TITLE_HEIGHT_RANGE}")
     p.add_argument("--font-size", type=float, help=f"tamaño de letra máximo del título {FONT_SIZE_RANGE}")
+    p.add_argument("--title-style", choices=sorted(STYLES), help="estilo del texto: franja, cajas o contorno")
+    p.add_argument("--font", choices=sorted(FONTS), help="tipografía del título")
+    p.add_argument("--split", type=float, help=f"% de alto de la parte de arriba (modo superpuesto) {SPLIT_RANGE}")
+    p.add_argument("--offset", type=float, help=f"subir/bajar el texto superpuesto en px {OFFSET_RANGE}")
+    p.add_argument("--lowercase", action="store_true", help="respeta mayúsculas/minúsculas tal como las escribes")
     p.add_argument("--list-presets", action="store_true", help="muestra las variaciones disponibles")
     a = p.parse_args()
 
@@ -496,6 +598,8 @@ def main():
         for pid, spec in PRESETS.items():
             needs = f"  (necesita: {', '.join(spec['needs'])})" if spec["needs"] else ""
             print(f"{pid:12s} {spec['label']}{needs}")
+        print("\nEstilos de texto (--title-style):", ", ".join(f"{k} ({v['label']})" for k, v in STYLES.items()))
+        print("Tipografías (--font):", ", ".join(f"{k} ({v[0]})" for k, v in FONTS.items()))
         return
     if not a.clip:
         p.error("falta el clip")
@@ -523,7 +627,8 @@ def main():
     try:
         cfg = apply_overrides(cfg, cam=parse_box(a.cam, "--cam") if a.cam else None,
                               game=parse_box(a.game, "--game") if a.game else None,
-                              title_height=a.title_height, font_size=a.font_size)
+                              title_height=a.title_height, font_size=a.font_size, title_style=a.title_style,
+                              font=a.font, split=a.split, offset=a.offset, uppercase=False if a.lowercase else None)
     except ValueError as e:
         sys.exit(str(e))
 

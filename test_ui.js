@@ -132,6 +132,32 @@ const path = require('path');
   checks.renderWithNewControls = v6[0] === 1080 && v6[1] === 1920;
   await page.click('#resetgame');
   checks.gameBoxReset = (await page.$eval('#gbox', e => parseFloat(e.style.width))) === 100;
+  // estilos y tipografias del texto
+  checks.sixStyles = (await page.$$('#styles .opt')).length === 6;
+  checks.sevenFonts = (await page.$$('#fonts .opt')).length === 7;
+  checks.bandControlsInBand = (await visible('#grp-band')) && !(await visible('#grp-split')) && !(await visible('#grp-offset'));
+  const change = async fn => {
+    const before = await page.$eval('#preview', e => e.src);
+    await fn();
+    await page.waitForFunction(p => document.querySelector('#preview').src !== p, before, { timeout: 20000 });
+    return true;
+  };
+  checks.previewChangesWithStyle = await change(() => page.check('input[name=tstyle][value=box_white]', { force: true }));
+  checks.fsizeRecommended = (await page.$eval('#fsize', e => e.value)) === '56';
+  checks.overlayControls = !(await visible('#grp-band')) && (await visible('#grp-split')) && (await visible('#grp-offset'));
+  checks.previewChangesWithFont = await change(() => page.check('input[name=tfont][value=anton]', { force: true }));
+  checks.previewChangesWithSplitOffset = await change(() => page.evaluate(() => {
+    for (const [id, v] of [['split', 40], ['offset', 100]]) { const el = document.getElementById(id); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); }
+  }));
+  checks.overlayLabels = (await page.textContent('#split-out')) === '40 %' && (await page.textContent('#offset-out')) === '+100 px';
+  checks.previewChangesWithUppercase = await change(() => page.uncheck('#upper'));
+  await page.check('input[value="clip_blur"]', { force: true });
+  checks.blurHidesSplit = !(await visible('#grp-split')) && (await visible('#grp-offset'));
+  await page.check('input[value="cam_game"]', { force: true });
+  checks.splitBackForStacked = await visible('#grp-split');
+  const v7 = await render();
+  checks.renderOverlayStyle = v7[0] === 1080 && v7[1] === 1920;
+  await page.screenshot({ path: shot.replace('.png', '_overlay.png'), fullPage: true });
   await page.click('#savecam');
   await page.waitForFunction(() => /Guardado/.test(document.querySelector('#savemsg').textContent));
   checks.savedMessage = true;
@@ -143,9 +169,13 @@ const path = require('path');
   await page.waitForFunction(() => document.querySelector('#account option'));
   await page.selectOption('#account', 'wganga');
   await page.waitForFunction(() => document.querySelector('#titleh').value === '480');
-  checks.savedSurvivesReload = (await page.$eval('#fsize', e => e.value)) === '120' && (await page.textContent('#titleh-out')) === '480 px';
+  checks.savedSurvivesReload = (await page.$eval('#fsize', e => e.value)) === '56' && (await page.textContent('#titleh-out')) === '480 px';
   const camW = await page.$eval('#box', e => parseFloat(e.style.width));
   checks.savedCamBoxSurvivesReload = camW > 26 && camW < 30;
+  checks.styleSurvivesReload = (await page.$eval('input[name=tstyle]:checked', e => e.value)) === 'box_white';
+  checks.fontSurvivesReload = (await page.$eval('input[name=tfont]:checked', e => e.value)) === 'anton';
+  checks.splitOffsetUppercaseSurvive = (await page.$eval('#split', e => e.value)) === '40' && (await page.$eval('#offset', e => e.value)) === '100' && !(await page.$eval('#upper', e => e.checked));
+  checks.overlayControlsAfterReload = !(await visible('#grp-band')) && (await visible('#grp-split'));
   await page.click('#factory');
   await page.waitForFunction(() => document.querySelector('#titleh').value === '320');
   checks.factoryRestores = (await page.$eval('#fsize', e => e.value)) === '96';
@@ -153,6 +183,9 @@ const path = require('path');
   await page.waitForFunction(() => document.querySelector('#account option'));
   await page.selectOption('#account', 'wganga');
   checks.factoryPersists = (await page.$eval('#titleh', e => e.value)) === '320';
+  checks.factoryRestoresText = (await page.$eval('input[name=tstyle]:checked', e => e.value)) === 'band'
+    && (await page.$eval('input[name=tfont]:checked', e => e.value)) === 'inter'
+    && (await page.$eval('#upper', e => e.checked)) && (await visible('#grp-band'));
   await browser.close();
 
   const failed = Object.entries(checks).filter(([, v]) => v !== true).map(([k]) => k);

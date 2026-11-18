@@ -65,6 +65,12 @@
   .mini-drop.over { border-color:var(--accent); color:var(--text); }
   .mini-drop.has { border-style:solid; color:var(--text); }
   .mini-drop img { height:56px; border-radius:6px; }
+  .opt { position:relative; margin:0; }
+  .opt input { position:absolute; inset:0; opacity:0; margin:0; cursor:pointer; }
+  .opt:has(input:checked) { border-color:var(--accent); background:rgba(255,122,0,.12); }
+  .opt:has(input:focus-visible) { outline:2px solid var(--accent); outline-offset:2px; }
+  .sample { display:inline-block; padding:2px 9px; border-radius:6px; font-weight:700; font-size:14px; line-height:1.3; }
+  .fsample { font-size:18px; line-height:1.2; }
   progress { width:100%; height:8px; margin-top:10px; accent-color:var(--accent); }
   .banner { display:flex; gap:14px; align-items:center; justify-content:center; flex-wrap:wrap; padding:10px 24px; background:rgba(255,122,0,.14); border-bottom:1px solid var(--accent); }
   .empty { color:var(--muted); text-align:center; padding:60px 10px; }
@@ -106,13 +112,22 @@
       <h2>3 · Título y cuenta</h2>
       <label for="title">Título (va en el centro del video)</label>
       <input id="title" type="text" maxlength="200" placeholder="Se le cae todo en pleno robo en GTA VI">
+      <label>Estilo del texto</label>
+      <div id="styles" class="chips" role="radiogroup" aria-label="Estilo del texto"></div>
+      <label>Tipografía</label>
+      <div id="fonts" class="chips" role="radiogroup" aria-label="Tipografía"></div>
+      <label class="chip" style="display:inline-flex;margin-top:12px"><input id="upper" type="checkbox" checked> Todo en mayúsculas</label>
       <div class="sliders">
-        <div><label for="titleh">Alto de la franja del título <output id="titleh-out">320 px</output></label>
+        <div id="grp-band"><label for="titleh">Alto de la franja del título <output id="titleh-out">320 px</output></label>
           <input id="titleh" type="range" min="120" max="560" step="10" value="320"></div>
+        <div id="grp-split" style="display:none"><label for="split">Parte de arriba <output id="split-out">50 %</output></label>
+          <input id="split" type="range" min="30" max="70" step="1" value="50"></div>
+        <div id="grp-offset" style="display:none"><label for="offset">Subir / bajar el texto <output id="offset-out">0 px</output></label>
+          <input id="offset" type="range" min="-500" max="500" step="10" value="0"></div>
         <div><label for="fsize">Tamaño de letra <output id="fsize-out">96</output></label>
           <input id="fsize" type="range" min="30" max="200" step="2" value="96"></div>
       </div>
-      <div class="hint">Si el título es largo, la letra se achica sola para que quepa. Agranda la franja para darle más espacio; la cámara y el gameplay se ajustan al resto.</div>
+      <div class="hint" id="texthint"></div>
       <label for="account">Cuenta</label>
       <select id="account"></select>
       <label>Quién sale en el clip (para los hashtags)</label>
@@ -263,7 +278,7 @@ function selectPreset(id) {
   $('toolcam-lbl').classList.toggle('off', !p.uses_cam);
   $('nocam-lbl').classList.toggle('off', !p.uses_cam);
   if (!p.uses_cam && tool === 'cam') { tool = 'game'; $('toolgame').checked = true; }
-  drawBoxes();
+  drawBoxes(); syncTextControls();
   refreshGo(); schedulePreview();
 }
 
@@ -300,12 +315,68 @@ wireExtra('drop-clipb', 'file-clipb', 'clip_b');
 function showSliders() {
   $('titleh-out').textContent = $('titleh').value + ' px';
   $('fsize-out').textContent = $('fsize').value;
+  $('split-out').textContent = $('split').value + ' %';
+  const o = +$('offset').value;
+  $('offset-out').textContent = (o > 0 ? '+' : '') + o + ' px';
+}
+
+const STYLE_SIZE = { band: 96, box_white: 56, box_black: 56, box_yellow: 56, outline: 84, outline_yellow: 84 };
+let tstyle = 'band', tfont = 'inter', textOpts = { styles: [], fonts: [] };
+
+function styleCss(s) {
+  if (s.id === 'band') return 'background:#111;color:#fff;border-top:2px solid #ff7a00;border-bottom:2px solid #ff7a00;border-radius:0;text-transform:uppercase';
+  if (s.box) return `background:${s.box};color:${s.text}`;
+  return `color:${s.text};-webkit-text-stroke:3px #000;paint-order:stroke fill;padding:0 4px`;
+}
+
+function buildTextChips() {
+  $('styles').innerHTML = ''; $('fonts').innerHTML = '';
+  textOpts.styles.forEach(s => {
+    const l = document.createElement('label'); l.className = 'chip opt';
+    const i = document.createElement('input'); i.type = 'radio'; i.name = 'tstyle'; i.value = s.id; i.checked = s.id === tstyle;
+    i.onchange = () => setStyle(s.id, true);
+    const sp = document.createElement('span'); sp.className = 'sample'; sp.style.cssText = styleCss(s); sp.textContent = s.label;
+    l.append(i, sp); $('styles').appendChild(l);
+  });
+  textOpts.fonts.forEach(f => {
+    const l = document.createElement('label'); l.className = 'chip opt';
+    const i = document.createElement('input'); i.type = 'radio'; i.name = 'tfont'; i.value = f.id; i.checked = f.id === tfont;
+    i.onchange = () => setFont(f.id);
+    const sp = document.createElement('span'); sp.className = 'fsample'; sp.style.fontFamily = `'cm-${f.id}', sans-serif`; sp.textContent = 'Aa ' + f.label;
+    l.append(i, sp); $('fonts').appendChild(l);
+    new FontFace('cm-' + f.id, `url(${f.url})`).load().then(ff => document.fonts.add(ff)).catch(() => {});
+  });
+}
+
+function setStyle(id, resize) {
+  tstyle = id;
+  document.querySelectorAll('input[name=tstyle]').forEach(r => r.checked = r.value === id);
+  if (resize) $('fsize').value = STYLE_SIZE[id];
+  showSliders(); syncTextControls(); schedulePreview();
+}
+function setFont(id) {
+  tfont = id;
+  document.querySelectorAll('input[name=tfont]').forEach(r => r.checked = r.value === id);
+  schedulePreview();
+}
+function syncTextControls() {
+  const over = tstyle !== 'band';
+  $('grp-band').style.display = over ? 'none' : 'block';
+  $('grp-split').style.display = over && preset !== 'clip_blur' ? 'block' : 'none';
+  $('grp-offset').style.display = over ? 'block' : 'none';
+  $('texthint').textContent = over
+    ? 'El texto va encima de los videos, que quedan pegados. Con "Parte de arriba" repartes el alto entre ambos y con "Subir / bajar" mueves el texto desde la unión.'
+    : 'Si el título es largo, la letra se achica sola para que quepa. Agranda la franja para darle más espacio; la cámara y el gameplay se ajustan al resto.';
 }
 
 function applySettings(s) {
   boxes.cam = s.cam_crop.slice(); boxes.game = s.game_crop.slice();
   $('titleh').value = s.title_height; $('fsize').value = s.font_size;
-  showSliders(); drawBoxes();
+  $('split').value = s.title_split; $('offset').value = s.title_offset; $('upper').checked = s.uppercase;
+  tstyle = s.title_style; tfont = s.font;
+  document.querySelectorAll('input[name=tstyle]').forEach(r => r.checked = r.value === tstyle);
+  document.querySelectorAll('input[name=tfont]').forEach(r => r.checked = r.value === tfont);
+  showSliders(); syncTextControls(); drawBoxes();
 }
 
 function renderPeople() {
@@ -383,7 +454,8 @@ $('title').oninput = () => { refreshGo(); schedulePreview(); };
 $('account').onchange = renderPeople;
 $('nocam').onchange = () => { drawBoxes(); schedulePreview(); };
 $('audio').onchange = schedulePreview;
-['titleh', 'fsize'].forEach(id => $(id).oninput = () => { showSliders(); schedulePreview(); });
+['titleh', 'fsize', 'split', 'offset'].forEach(id => $(id).oninput = () => { showSliders(); schedulePreview(); });
+$('upper').onchange = schedulePreview;
 
 $('resetgame').onclick = () => { boxes.game = [0, 0, 1, 1]; drawBoxes(); schedulePreview(); };
 
@@ -391,13 +463,15 @@ const payload = () => ({
   id: job.id, title: $('title').value, account: $('account').value, cam: boxes.cam, game: boxes.game,
   no_cam: $('nocam').checked, preset, audio: $('audio').value,
   title_height: +$('titleh').value, font_size: +$('fsize').value,
+  title_style: tstyle, font: tfont, split: +$('split').value, offset: +$('offset').value, uppercase: $('upper').checked,
   people: [...document.querySelectorAll('#people input:checked')].map(i => i.value),
 });
 
 $('savecam').onclick = async () => {
   try {
     const r = await postJson('/api/account-defaults', { account: $('account').value, cam: boxes.cam, game: boxes.game,
-      title_height: +$('titleh').value, font_size: +$('fsize').value });
+      title_height: +$('titleh').value, font_size: +$('fsize').value, title_style: tstyle, font: tfont,
+      split: +$('split').value, offset: +$('offset').value, uppercase: $('upper').checked });
     Object.assign(accounts[$('account').value], r.settings);
     $('savemsg').textContent = 'Guardado como valores por defecto de esta cuenta.';
   } catch (e) { $('savemsg').textContent = e.message; }
@@ -519,6 +593,8 @@ async function updateFlow() {
   updateFlow();
   try {
     presets = await api('/api/presets');
+    textOpts = await api('/api/text-options');
+    buildTextChips();
     renderPresets(); selectPreset(preset);
     accounts = await api('/api/accounts');
     Object.entries(accounts).forEach(([k, v]) => $('account').add(new Option(v.handle, k)));

@@ -285,6 +285,67 @@ for pid in ("game_cam", "clip_blur"):
     check(f"preview {pid}", preview(preset=pid).status_code == 200)
 check("preview clip_image con imagen", preview(id=job2, preset="clip_image", title_height=300).status_code == 200)
 
+# ---- estilos de texto y tipografias ----
+opts = c.get("/api/text-options").json
+check("text-options: 6 estilos y 7 fuentes", len(opts["styles"]) == 6 and len(opts["fonts"]) == 7, (len(opts["styles"]), len(opts["fonts"])))
+check("text-options: incluye caja blanca y Anton", any(s["id"] == "box_white" and s["box"] == "#ffffff" for s in opts["styles"])
+      and any(f["id"] == "anton" and f["label"] == "Anton" for f in opts["fonts"]))
+for f in opts["fonts"]:
+    rr = c.get(f["url"])
+    check(f"fuente servida {f['id']}", rr.status_code == 200 and len(rr.data) > 10000 and "max-age" in rr.headers.get("Cache-Control", ""))
+for bad in ("../app.py", "..%2fapp.py", "licenses", "licenses/OFL-anton.txt", "OFL-anton.txt", "README.txt", "nada.ttf", "%2e%2e%2fapp.py"):
+    check(f"fuentes: no sirve {bad}", c.get("/fonts/" + bad).status_code == 404)
+a0 = c.get("/api/accounts").json["wganga"]
+check("factory trae estilo/fuente/reparto/offset/mayusculas", a0["factory"]["title_style"] == "band" and a0["factory"]["font"] == "inter"
+      and a0["factory"]["title_split"] == 50 and a0["factory"]["title_offset"] == 0 and a0["factory"]["uppercase"] is True, a0["factory"])
+
+r = defaults(title_style="box_white", font="anton", split=40, offset=120, uppercase=False, font_size=56)
+st = r.json["settings"] if r.status_code == 200 else {}
+check("account-defaults guarda estilo, fuente, reparto, offset, mayusculas",
+      st.get("title_style") == "box_white" and st.get("font") == "anton" and st.get("title_split") == 40
+      and st.get("title_offset") == 120 and st.get("uppercase") is False, st)
+a1 = c.get("/api/accounts").json
+check("accounts devuelve los ajustes de texto guardados", a1["wganga"]["font"] == "anton" and a1["wganga"]["title_style"] == "box_white")
+check("otra cuenta no hereda el estilo", a1["gtahispa"]["title_style"] == "band" and a1["gtahispa"]["font"] == "inter")
+for name, kw in (("estilo raro", dict(title_style="neon")), ("estilo vacio", dict(title_style="")), ("estilo numero", dict(title_style=5)),
+                 ("estilo lista", dict(title_style=["box_white"])), ("fuente rara", dict(font="comic")), ("fuente numero", dict(font=7)),
+                 ("split bajo", dict(split=10)), ("split alto", dict(split=90)), ("split texto", dict(split="x")), ("split bool", dict(split=True)),
+                 ("offset fuera", dict(offset=9999)), ("offset menos", dict(offset=-9999)), ("offset texto", dict(offset="x")),
+                 ("mayusculas texto", dict(uppercase="si")), ("mayusculas numero", dict(uppercase=1)), ("mayusculas lista", dict(uppercase=[True]))):
+    check(f"account-defaults rechaza {name}", defaults(**kw).status_code == 400)
+check("tras rechazos lo guardado sigue intacto", c.get("/api/accounts").json["wganga"]["font"] == "anton")
+webapp.SETTINGS_FILE.write_text(json.dumps({"wganga": {"title_style": "neon", "font": "anton", "title_split": 5, "title_offset": 40, "uppercase": "no"}}))
+a2 = c.get("/api/accounts").json["wganga"]
+check("ajustes de texto invalidos guardados caen a fabrica uno a uno",
+      a2["title_style"] == "band" and a2["font"] == "anton" and a2["title_split"] == 50 and a2["title_offset"] == 40 and a2["uppercase"] is True, a2)
+check("reset devuelve todo a fabrica", defaults(reset=True).json["settings"]["font"] == "inter")
+
+r, cfg_used = captured()
+check("render sin ajustes de texto usa franja e Inter", cfg_used["title_style"] == "band" and cfg_used.get("font") == "inter")
+defaults(title_style="box_black", font="bebas", split=35, offset=-80, uppercase=False)
+r, cfg_used = captured()
+check("render usa el estilo y la fuente guardados", cfg_used["title_style"] == "box_black" and cfg_used["font"] == "bebas"
+      and cfg_used["title_split"] == 35 and cfg_used["title_offset"] == -80 and cfg_used["title"]["uppercase"] is False)
+r, cfg_used = captured(title_style="outline", font="bangers", split=60, offset=10, uppercase=True)
+check("la peticion pisa el estilo guardado", cfg_used["title_style"] == "outline" and cfg_used["font"] == "bangers"
+      and cfg_used["title_split"] == 60 and cfg_used["title_offset"] == 10 and cfg_used["title"]["uppercase"] is True)
+for name, kw in (("estilo", dict(title_style="x")), ("fuente", dict(font="x")), ("split", dict(split=99)), ("offset", dict(offset=-600)),
+                 ("mayusculas", dict(uppercase="x"))):
+    check(f"render rechaza {name} invalido", captured(**kw)[0].status_code == 400)
+defaults(reset=True)
+
+check("preview con caja blanca difiere de la franja", preview(title_style="box_white", font_size=56).data != preview().data)
+check("preview con otra fuente difiere", preview(title_style="box_white", font="anton").data != preview(title_style="box_white", font="bangers").data)
+check("preview reparto distinto difiere", preview(title_style="box_white", split=30).data != preview(title_style="box_white", split=70).data)
+check("preview offset distinto difiere", preview(title_style="box_white", offset=-200).data != preview(title_style="box_white", offset=200).data)
+check("preview estilo invalido -> 400", preview(title_style="x").status_code == 400)
+for pid in ("game_cam", "clip_blur", "clip_image"):
+    check(f"preview {pid} con caja", preview(id=job2 if pid == "clip_image" else jid, preset=pid, title_style="box_yellow").status_code == 200)
+tid = start(jid, title_style="outline_yellow", font="anton").json["task"]
+stt, _ = wait_task(tid)
+check("montaje en segundo plano con estilo superpuesto", stt["state"] == "done", stt.get("error"))
+check("montaje en segundo plano con estilo invalido -> 400", start(jid, title_style="x").status_code == 400)
+
 # ---- actualizaciones ----
 import updater as _upd
 _upd.CONFIG_FILES = (Path(_tf.mkdtemp()) / "nada.json",)

@@ -76,6 +76,11 @@ SETTING_KEYS = {
     "game_crop": ("game", lambda cfg: cfg["game_crop"]),
     "title_height": ("title_height", lambda cfg: cfg["title_height"]),
     "font_size": ("font_size", lambda cfg: cfg["title"]["max_size"]),
+    "title_style": ("title_style", lambda cfg: cfg["title_style"]),
+    "font": ("font", lambda cfg: cfg["font"]),
+    "title_split": ("split", lambda cfg: cfg["title_split"]),
+    "title_offset": ("offset", lambda cfg: cfg["title_offset"]),
+    "uppercase": ("uppercase", lambda cfg: cfg["title"]["uppercase"]),
 }
 
 
@@ -84,7 +89,9 @@ REQUEST_TO_KEY = {kw: key for key, (kw, _) in SETTING_KEYS.items()}
 
 def factory_settings(cfg):
     return {"cam_crop": cfg["cam_crop"], "game_crop": cfg["game_crop"],
-            "title_height": cfg["title_zone"][3], "font_size": cfg["title"]["max_size"]}
+            "title_height": cfg["title_zone"][3], "font_size": cfg["title"]["max_size"],
+            "title_style": cfg.get("title_style", "band"), "font": cfg.get("font", "inter"),
+            "title_split": 50, "title_offset": 0, "uppercase": bool(cfg["title"].get("uppercase", True))}
 
 
 def account_settings(account, cfg):
@@ -126,6 +133,24 @@ def api_presets():
          "diagram": spec["diagram"]}
         for pid, spec in clipmaker.PRESETS.items()
     ])
+
+
+@app.get("/api/text-options")
+def api_text_options():
+    return jsonify(
+        styles=[{"id": k, "label": v["label"], "box": v.get("box"), "text": v.get("text", "#ffffff")}
+                for k, v in clipmaker.STYLES.items()],
+        fonts=[{"id": k, "label": label, "url": "/fonts/" + Path(path).name}
+               for k, (label, path) in clipmaker.FONTS.items()])
+
+
+@app.get("/fonts/<name>")
+def font_file(name):
+    if name not in {Path(p).name for _, p in clipmaker.FONTS.values()}:
+        abort(404)
+    resp = send_from_directory(HERE / "fonts", name)
+    resp.headers["Cache-Control"] = "public, max-age=86400"
+    return resp
 
 
 def extra_file(d, kind):
@@ -244,10 +269,12 @@ def prepare_render(data):
         return None, (jsonify(error="Para usar el audio del video B primero súbelo"), 400)
     no_cam = bool(data.get("no_cam")) and spec["uses_cam"]
     eff = account_settings(account, cfg)
-    ov = dict(cam=eff["cam_crop"], game=eff["game_crop"], title_height=eff["title_height"], font_size=eff["font_size"])
+    ov = dict(cam=eff["cam_crop"], game=eff["game_crop"], title_height=eff["title_height"], font_size=eff["font_size"],
+              title_style=eff["title_style"], font=eff["font"], split=eff["title_split"], offset=eff["title_offset"],
+              uppercase=eff["uppercase"])
     if spec["uses_cam"] and not no_cam and data.get("cam") is not None:
         ov["cam"] = data["cam"]
-    for key in ("game", "title_height", "font_size"):
+    for key in ("game", "title_height", "font_size", "title_style", "font", "split", "offset", "uppercase"):
         if data.get(key) is not None:
             ov[key] = data[key]
     try:
