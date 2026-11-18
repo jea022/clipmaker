@@ -91,10 +91,11 @@ def wait_for(fn, timeout=40, step=0.3):
     return None
 
 
-def start_launcher(box, port, py=None, env_extra=None):
-    env = dict(os.environ, CLIPMAKER_NO_BROWSER="1", CLIPMAKER_PORT_BASE=str(port))
+def start_launcher(box, port, py=None, env_extra=None, window=False, extra_args=()):
+    env = dict(os.environ, CLIPMAKER_NO_BROWSER="" if window else "1", CLIPMAKER_PORT_BASE=str(port))
     env.update(env_extra or {})
-    p = subprocess.Popen([py or str(HERE / ".venv" / "bin" / "python"), str(box / "launcher.py"), "--no-browser", "--port", str(port)],
+    args = ["--port", str(port), *extra_args] if window else ["--no-browser", "--port", str(port)]
+    p = subprocess.Popen([py or str(HERE / ".venv" / "bin" / "python"), str(box / "launcher.py"), *args],
                          cwd=box, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     procs.append(p)
     return p
@@ -495,6 +496,177 @@ check("primera vez: quedo el entorno y la marca de librerias", (box / ".venv" / 
 check("primera vez: el registro cuenta lo que hizo", "[preparando]" in (box / "data" / "clipmaker.log").read_text())
 stop(box, port, p1)
 check("primera vez: se cierra normal despues", p1.poll() == 0, p1.poll())
+
+# =================== ventana de aplicacion ===================
+FAKE = Path(tempfile.mkdtemp())
+fake_browser = FAKE / "fakebrowser"
+fake_browser.write_text('#!/bin/bash\necho "$@" >> "$FAKE_LOG"\necho $$ >> "$FAKE_PIDS"\n'
+                        '[ "$FAKE_MODE" = quick ] && exit 0\nexec /bin/sleep 600\n')
+fake_browser.chmod(0o755)
+fake_tab = FAKE / "faketab"
+fake_tab.write_text('#!/bin/bash\necho "$1" >> "$TAB_LOG"\n')
+fake_tab.chmod(0o755)
+
+
+def fake_env(mode="stay", tag="w"):
+    log, pids, tab = FAKE / f"{tag}.log", FAKE / f"{tag}.pids", FAKE / f"{tag}.tab"
+    for f in (log, pids, tab):
+        f.write_text("")
+    return {"CLIPMAKER_BROWSER": str(fake_browser), "FAKE_LOG": str(log), "FAKE_PIDS": str(pids), "FAKE_MODE": mode,
+            "BROWSER": f"{fake_tab} %s", "TAB_LOG": str(tab)}, log, pids, tab
+
+
+def lines(f):
+    return [l for l in Path(f).read_text().splitlines() if l.strip()]
+
+
+def kill_fakes(pids):
+    for l in lines(pids):
+        try:
+            os.kill(int(l), 9)
+        except (OSError, ValueError):
+            pass
+
+
+# --- buscar navegador ---
+os.environ.pop("CLIPMAKER_BROWSER", None)
+mb = load_launcher(make_box(), env_base)
+check("find_browser: un navegador forzado que existe se usa", (lambda: (os.environ.__setitem__("CLIPMAKER_BROWSER", str(fake_browser)), mb.find_browser())[1])() == str(fake_browser))
+os.environ["CLIPMAKER_BROWSER"] = "/no/existe/navegador"
+check("find_browser: uno forzado que no existe -> ninguno (cae a pestaña)", mb.find_browser() is None)
+os.environ.pop("CLIPMAKER_BROWSER")
+bindir = Path(tempfile.mkdtemp())
+(bindir / "chromium").write_text("#!/bin/sh\n")
+(bindir / "chromium").chmod(0o755)
+old_path = os.environ["PATH"]
+os.environ["PATH"] = str(bindir)
+check("find_browser (Linux): encuentra chromium en el PATH", mb.find_browser() == str(bindir / "chromium"), mb.find_browser())
+os.environ["PATH"] = old_path
+pf = Path(tempfile.mkdtemp())
+for sub in ("Microsoft/Edge/Application/msedge.exe", "Google/Chrome/Application/chrome.exe"):
+    (pf / sub).parent.mkdir(parents=True)
+    (pf / sub).write_text("x")
+saved_env = {k: os.environ.get(k) for k in ("ProgramFiles", "ProgramFiles(x86)", "LocalAppData")}
+os.environ["ProgramFiles"], os.environ["ProgramFiles(x86)"], os.environ["LocalAppData"] = str(pf), str(Path(tempfile.mkdtemp())), str(Path(tempfile.mkdtemp()))
+mb.IS_WIN = True
+check("find_browser (Windows): prefiere Edge (viene con Windows) antes que Chrome", mb.find_browser() == str(pf / "Microsoft/Edge/Application/msedge.exe"), mb.find_browser())
+(pf / "Microsoft/Edge/Application/msedge.exe").unlink()
+check("find_browser (Windows): sin Edge usa Chrome", mb.find_browser() == str(pf / "Google/Chrome/Application/chrome.exe"))
+(pf / "Google/Chrome/Application/chrome.exe").unlink()
+check("find_browser (Windows): sin ninguno -> cae al navegador normal", mb.find_browser() is None)
+mb.IS_WIN = False
+for k, v in saved_env.items():
+    if v is None:
+        os.environ.pop(k, None)
+    else:
+        os.environ[k] = v
+
+# --- Mac: Chrome/Edge/Brave dentro de .app ---
+home = Path(tempfile.mkdtemp())
+saved_home = os.environ.get("HOME")
+os.environ["HOME"] = str(home)
+mb.IS_MAC = True
+check("find_browser (Mac): sin Chrome/Edge/Brave -> cae a Safari/navegador normal", mb.find_browser() is None)
+(home / "Applications/Brave Browser.app/Contents/MacOS").mkdir(parents=True)
+(home / "Applications/Brave Browser.app/Contents/MacOS/Brave Browser").write_text("x")
+check("find_browser (Mac): encuentra Brave en ~/Applications", mb.find_browser() == str(home / "Applications/Brave Browser.app/Contents/MacOS/Brave Browser"), mb.find_browser())
+mb.IS_MAC = False
+if saved_home is not None:
+    os.environ["HOME"] = saved_home
+
+# --- Window: casos sueltos ---
+opened = []
+mb.webbrowser.open = lambda url: opened.append(url)
+mb.Window(enabled=False).open(1234)
+check("Window desactivada no abre nada", opened == [])
+mb.Window(tab=True).open(1234)
+check("Window en modo pestaña abre el navegador normal", opened == ["http://127.0.0.1:1234"], opened)
+bad = FAKE / "badbrowser"
+bad.write_text("no soy ejecutable")
+bad.chmod(0o644)
+os.environ["CLIPMAKER_BROWSER"] = str(bad)
+opened.clear()
+mb.Window().open(1235)
+check("si el navegador elegido no arranca, cae al navegador normal sin romper", opened == ["http://127.0.0.1:1235"], opened)
+os.environ.pop("CLIPMAKER_BROWSER")
+
+# --- integracion: abre como aplicacion y cerrar la ventana cierra Clipmaker ---
+box = make_box()
+port = free_port()
+env, flog, fpids, ftab = fake_env("stay", "a")
+p1 = start_launcher(box, port, env_extra=env, window=True)
+check("ventana: la app arranca", wait_for(lambda: ping(port), 60) is not None)
+wait_for(lambda: lines(flog), 20)
+argv = lines(flog)[0].split() if lines(flog) else []
+check("ventana: se abre como aplicacion (--app) apuntando a la app", f"--app=http://127.0.0.1:{port}" in argv, argv)
+check("ventana: con perfil propio (el navegador es un proceso aparte)", f"--user-data-dir={box / 'data' / 'window-profile'}" in " ".join(lines(flog)[0].split(" ")) or any(a.startswith("--user-data-dir=") and a.endswith("window-profile") for a in argv), argv)
+check("ventana: sin asistente de primer uso ni aviso de navegador predeterminado", "--no-first-run" in argv and "--no-default-browser-check" in argv)
+check("ventana: tamaño inicial razonable", any(a.startswith("--window-size=") for a in argv))
+check("ventana: NO abre ademas una pestaña normal", lines(ftab) == [])
+time.sleep(3.6)
+for l in lines(fpids):
+    os.kill(int(l), 15)
+rc = None
+try:
+    rc = p1.wait(timeout=25)
+except subprocess.TimeoutExpired:
+    p1.kill()
+check("ventana: al cerrar la ventana, Clipmaker se cierra solo y el lanzador termina con 0", rc == 0, rc)
+check("ventana: tras cerrar queda el puerto libre", wait_for(lambda: ping(port) is None, 5) is not None)
+check("ventana: el registro lo cuenta", "se cerró la ventana" in (box / "data" / "clipmaker.log").read_text())
+kill_fakes(fpids)
+
+# --- si el navegador termina al instante (le pasa la ventana a otra copia) NO se cierra nada ---
+box = make_box()
+port = free_port()
+env, flog, fpids, ftab = fake_env("quick", "b")
+p1 = start_launcher(box, port, env_extra=env, window=True)
+wait_for(lambda: ping(port), 60)
+wait_for(lambda: lines(flog), 20)
+time.sleep(5)
+check("ventana que termina al instante: Clipmaker sigue funcionando", ping(port) is not None and p1.poll() is None)
+# --- abrir otra vez: otra ventana, sin segunda copia ---
+env2, flog2, fpids2, _ = fake_env("quick", "b2")
+r = subprocess.run([str(HERE / ".venv" / "bin" / "python"), str(box / "launcher.py")], cwd=box,
+                   env=dict(os.environ, CLIPMAKER_NO_BROWSER="", CLIPMAKER_PORT_BASE=str(port), **env2), capture_output=True, text=True, timeout=30)
+time.sleep(0.5)
+check("abrir otra vez: abre una ventana de la misma app y no arranca otra copia",
+      r.returncode == 0 and "ya está abierto" in r.stdout and len(lines(flog2)) == 1 and f"--app=http://127.0.0.1:{port}" in lines(flog2)[0] and ping(port + 1) is None, r.stdout.strip())
+stop(box, port, p1)
+check("ventana: se puede cerrar con el boton aunque la ventana ya no exista", p1.poll() == 0, p1.poll())
+
+# --- --tab y "sin Chrome/Edge": pestaña del navegador normal ---
+for label, extra_args, env_x in (("--tab", ["--tab"], {}), ("sin Chromium instalado", [], {"CLIPMAKER_BROWSER": "/no/existe"})):
+    box = make_box()
+    port = free_port()
+    env, flog, fpids, ftab = fake_env("stay", "c")
+    env.update(env_x)
+    p1 = start_launcher(box, port, env_extra=env, window=True, extra_args=extra_args)
+    wait_for(lambda: ping(port), 60)
+    got = wait_for(lambda: lines(ftab), 15)
+    check(f"{label}: abre una pestaña normal de esa direccion y no una ventana de aplicacion",
+          got == [f"http://127.0.0.1:{port}"] and lines(flog) == [], (got, lines(flog)))
+    stop(box, port, p1)
+
+# --- primera vez (sin ffmpeg): la ventana muestra la preparacion y cerrarla cancela ---
+box = make_box()
+port = free_port()
+env, flog, fpids, ftab = fake_env("stay", "d")
+env["PATH"] = "/nonexistent"
+p1 = start_launcher(box, port, env_extra=env, window=True)
+wait_for(lambda: lines(flog), 30)
+check("preparacion: la ventana se abre al instante en la pagina de preparacion", f"--app=http://127.0.0.1:{port}" in (lines(flog)[0] if lines(flog) else ""), lines(flog))
+check("preparacion: responde como pagina de preparacion", wait_for(lambda: (ping(port) or {}).get("app") == "clipmaker-setup", 15) is not None)
+time.sleep(3.6)
+for l in lines(fpids):
+    os.kill(int(l), 15)
+try:
+    rc = p1.wait(timeout=25)
+except subprocess.TimeoutExpired:
+    p1.kill()
+    rc = "colgado"
+check("preparacion: cerrar la ventana cancela y el lanzador termina", rc == 1 and wait_for(lambda: ping(port) is None, 5) is not None, rc)
+kill_fakes(fpids)
 
 for p in procs:
     if p.poll() is None:

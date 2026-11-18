@@ -134,9 +134,84 @@ def notify(title, text):
         pass
 
 
-def open_browser(port, enabled=True):
-    if enabled and not os.environ.get("CLIPMAKER_NO_BROWSER"):
-        webbrowser.open(f"http://127.0.0.1:{port}")
+def find_browser():
+    """Un navegador basado en Chromium (Edge, Chrome, Brave...) para abrir Clipmaker como ventana de aplicación."""
+    forced = os.environ.get("CLIPMAKER_BROWSER")
+    if forced:
+        return forced if (Path(forced).is_file() or shutil.which(forced)) else None
+    cands = []
+    if IS_WIN:
+        roots = [Path(r) for r in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles"),
+                                   os.environ.get("LocalAppData")) if r]
+        for sub in (("Microsoft", "Edge", "Application", "msedge.exe"), ("Google", "Chrome", "Application", "chrome.exe"),
+                    ("BraveSoftware", "Brave-Browser", "Application", "brave.exe")):
+            cands += [root.joinpath(*sub) for root in roots]
+    elif IS_MAC:
+        for name in ("Google Chrome", "Microsoft Edge", "Brave Browser", "Chromium"):
+            for base in (Path("/Applications"), Path.home() / "Applications"):
+                cands.append(base / f"{name}.app" / "Contents" / "MacOS" / name)
+    else:
+        for name in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "microsoft-edge",
+                     "microsoft-edge-stable", "brave-browser"):
+            found = shutil.which(name)
+            if found:
+                cands.append(Path(found))
+    for c in cands:
+        if c.is_file():
+            return str(c)
+    return None
+
+
+class Window:
+    """Abre Clipmaker como ventana de aplicación (sin pestañas ni barra de direcciones). Con un perfil propio, el
+    navegador es un proceso aparte: cuando cierras la ventana ese proceso termina y se puede cerrar Clipmaker."""
+
+    def __init__(self, tab=False, enabled=True):
+        self.tab, self.enabled = tab, enabled
+        self.proc, self.opened_at, self.on_close = None, 0.0, None
+
+    def open(self, port):
+        if not self.enabled or os.environ.get("CLIPMAKER_NO_BROWSER"):
+            return
+        url = f"http://127.0.0.1:{port}"
+        browser = None if (self.tab or os.environ.get("CLIPMAKER_TAB")) else find_browser()
+        if not browser:
+            webbrowser.open(url)
+            return
+        profile = DATA / "window-profile"
+        profile.mkdir(parents=True, exist_ok=True)
+        cmd = [browser, f"--app={url}", f"--user-data-dir={profile}", "--no-first-run", "--no-default-browser-check",
+               "--window-size=1320,920"]
+        try:
+            self.proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as e:
+            log(f"no pude abrir la ventana con {browser} ({e}); abro el navegador normal")
+            webbrowser.open(url)
+            return
+        self.opened_at = time.time()
+        log(f"ventana abierta con {browser}")
+        threading.Thread(target=self._watch, daemon=True).start()
+
+    def _watch(self):
+        proc = self.proc
+        proc.wait()
+        # Si termina casi al instante, el navegador le pasó la ventana a una copia ya abierta: no es un cierre.
+        if time.time() - self.opened_at >= 3 and self.on_close:
+            log("se cerró la ventana de Clipmaker")
+            self.on_close()
+
+
+def open_browser(port, enabled=True, tab=False):
+    """Abre otra ventana de Clipmaker sin vigilarla (cuando ya hay una copia en marcha)."""
+    Window(tab, enabled).open(port)
+
+
+def shutdown_app(port):
+    try:
+        _NO_PROXY.open(urllib.request.Request(f"http://127.0.0.1:{port}/api/shutdown", method="POST", data=b"",
+                                              headers={"X-Clipmaker": "1"}), timeout=3).read()
+    except Exception:
+        pass
 
 
 # ---------- una sola copia a la vez ----------
@@ -333,6 +408,8 @@ class Setup:
         steps = {"venv": self.step_venv, "deps": self.step_deps, "tpl": self.step_tpl, "ffmpeg": self.step_ffmpeg}
         try:
             for key, _ in self.STEPS:
+                if self.quit:
+                    raise SetupError("Preparación cancelada.")
                 self.state[key] = "en curso"
                 steps[key]()
                 self.state[key] = "listo"
@@ -528,13 +605,25 @@ def quiet_prepare():
         notify("Clipmaker", f"No pude preparar la actualización: {setup.error}")
 
 
-def run(port, no_browser=False):
+def run(port, no_browser=False, tab=False):
     opened = False
+    current = {"setup": None}
+    win = Window(tab, not no_browser)
+
+    def close_request():
+        s = current["setup"]
+        if s is not None:
+            s.quit = True
+            s.retry.set()
+        shutdown_app(port)
+
+    win.on_close = close_request
     if not env_ready():
         setup = Setup()
+        current["setup"] = setup
         server = start_setup_server(port, setup)
         write_state(port, "setup")
-        open_browser(port, not no_browser)
+        win.open(port)
         opened = True
         while True:
             setup.run()
@@ -558,7 +647,7 @@ def run(port, no_browser=False):
         nonlocal opened
         if not opened:
             opened = True
-            open_browser(port, not no_browser)
+            win.open(port)
 
     return supervise(lambda: spawn_app(port), port, on_ready=ready, prepare=quiet_prepare)
 
@@ -566,7 +655,8 @@ def run(port, no_browser=False):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--port", type=int, help="puerto (por defecto 5000, o 5055 en Mac)")
-    ap.add_argument("--no-browser", action="store_true", help="no abrir el navegador")
+    ap.add_argument("--no-browser", action="store_true", help="no abrir ninguna ventana")
+    ap.add_argument("--tab", action="store_true", help="abrir en una pestaña del navegador en vez de una ventana propia")
     ap.add_argument("--status", action="store_true", help="muestra el estado y sale")
     a = ap.parse_args(argv)
     os.chdir(HERE)
@@ -582,14 +672,14 @@ def main(argv=None):
             notify("Clipmaker", f"Ya hay una copia anterior de Clipmaker abierta (puerto {inst['port']}, la ventana negra "
                                 f"de run.bat). Se abre esa. Para pasar al lanzador nuevo: pulsa «Actualizar ahora» en esa "
                                 f"página, luego «Cerrar Clipmaker», cierra la ventana negra y abre Clipmaker otra vez.")
-        open_browser(inst["port"], not a.no_browser)
+        open_browser(inst["port"], not a.no_browser, a.tab)
         return 0
     if not acquire_lock():
         end = time.time() + 30
         while time.time() < end:
             inst = existing_instance()
             if inst:
-                open_browser(inst["port"], not a.no_browser)
+                open_browser(inst["port"], not a.no_browser, a.tab)
                 return 0
             time.sleep(0.5)
         print("Otro lanzador está arrancando Clipmaker.", file=sys.stderr)
@@ -601,7 +691,7 @@ def main(argv=None):
             notify("Clipmaker", str(e))
             return 1
         log(f"lanzador iniciado (pid {os.getpid()}, puerto {port})")
-        return run(port, a.no_browser)
+        return run(port, a.no_browser, a.tab)
     finally:
         release_lock()
 

@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Clipmaker</title>
+<link rel="icon" type="image/png" href="/static/clipmaker.png">
 <style>
   :root { --bg:#0e0e16; --panel:#171724; --line:#2a2a3d; --text:#f2f2f7; --muted:#9a9ab0; --accent:#ff7a00; --ok:#3ddc84; --err:#ff5c5c; }
   * { box-sizing: border-box; }
@@ -695,7 +696,8 @@ $('quit').onclick = async () => {
   if (!confirm('¿Cerrar Clipmaker? Para abrirlo otra vez usa su icono del escritorio.')) return;
   try { await fetch('/api/shutdown', { method: 'POST', headers: { 'X-Clipmaker': '1' } }); } catch {}
   document.body.innerHTML = '<div style="max-width:520px;margin:20vh auto;padding:0 20px;text-align:center;font:16px/1.5 system-ui,sans-serif;color:#f2f2f7">'
-    + '<h2 style="margin:0 0 8px">Clipmaker se cerró</h2><p style="color:#9a9ab0">Ya puedes cerrar esta pestaña. Para abrirlo otra vez usa su icono del escritorio.</p></div>';
+    + '<h2 style="margin:0 0 8px">Clipmaker se cerró</h2><p style="color:#9a9ab0">Ya puedes cerrar esta ventana. Para abrirlo otra vez usa su icono del escritorio.</p></div>';
+  setTimeout(() => window.close(), 600);
 };
 
 async function updateFlow() {

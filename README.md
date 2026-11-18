@@ -19,9 +19,10 @@ Convierte un clip horizontal de stream en un video vertical 1080x1920: **cámara
 Las actualizaciones automáticas funcionan igual que en Windows.
 
 ## Abrir y cerrar (sin consola)
-El icono abre Clipmaker **sin ventana de consola**: la app corre en segundo plano y sigue viva aunque cierres el navegador o la pestaña.
-- Si lo abres otra vez, no se duplica: solo abre el navegador en la copia que ya está corriendo.
-- Para cerrarla del todo usa el botón **Cerrar Clipmaker** (arriba a la derecha).
+El icono abre Clipmaker **sin ventana de consola y como ventana de aplicación** (sin pestañas ni barra de direcciones), usando Edge (viene con Windows), Chrome o Brave; en Mac, Chrome, Edge, Brave o Chromium si los tienes instalados. **Al cerrar la ventana, Clipmaker se cierra solo.**
+- Si no hay ninguno de esos navegadores (por ejemplo, un Mac solo con Safari) se abre en una pestaña del navegador normal, y entonces la app sigue viva hasta que uses **Cerrar Clipmaker**. Para forzar la pestaña: `python launcher.py --tab`; para elegir otro navegador: variable `CLIPMAKER_BROWSER` con la ruta del programa.
+- Si lo abres otra vez, no se duplica: solo abre otra ventana de la copia que ya está corriendo.
+- También puedes cerrarla con el botón **Cerrar Clipmaker** (arriba a la derecha).
 - Tras una actualización se reinicia sola; si se cae, vuelve a arrancar (si se cae 3 veces seguidas te avisa).
 - Si algo falla, el registro está en `data/clipmaker.log`.
 - No muevas la carpeta del proyecto después de crear el icono (si la mueves, vuelve a ejecutar el instalador del acceso directo).
