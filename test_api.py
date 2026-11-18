@@ -339,6 +339,10 @@ check("preview con otra fuente difiere", preview(title_style="box_white", font="
 check("preview reparto distinto difiere", preview(title_style="box_white", split=30).data != preview(title_style="box_white", split=70).data)
 check("preview offset distinto difiere", preview(title_style="box_white", offset=-200).data != preview(title_style="box_white", offset=200).data)
 check("preview estilo invalido -> 400", preview(title_style="x").status_code == 400)
+for sid in ("box_white", "box_black", "outline", "outline_yellow"):
+    check(f"preview con titulo solo de emojis y {sid} no rompe", preview(title="😂😂", title_style=sid).status_code == 200)
+check("montaje sincrono con titulo solo de emojis y caja", c.post("/api/render", json={"id": jid, "title": "😂", "account": "wganga",
+      "title_style": "box_white"}).status_code == 200)
 for pid in ("game_cam", "clip_blur", "clip_image"):
     check(f"preview {pid} con caja", preview(id=job2 if pid == "clip_image" else jid, preset=pid, title_style="box_yellow").status_code == 200)
 tid = start(jid, title_style="outline_yellow", font="anton").json["task"]

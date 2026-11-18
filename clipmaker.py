@@ -356,6 +356,9 @@ def render_title_overlay(text, cfg, out_png):
     text = clean_title(text)
     if t.get("uppercase"):
         text = text.upper()
+    if not text:
+        Image.new("RGBA", (2, 2), (0, 0, 0, 0)).save(out_png)
+        return 2, 2
     cw, _ = cfg["canvas"]
     boxed = st.get("box")
     probe = ImageDraw.Draw(Image.new("RGBA", (8, 8)))
