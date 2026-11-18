@@ -442,6 +442,20 @@ with mock.patch.object(webapp.publish_youtube, "upload", return_value="VIDH") as
     pr2 = c.post("/api/publish-youtube", json={"id": jid, "title": "Hola", "account": "wganga", "cursor": "x"})
     check("publicar: cursor basura se trata como 0", pr2.status_code == 200)
 
+# ---- ping y cierre (los usa el lanzador) ----
+import os as _os
+pg = c.get("/api/ping").json
+check("ping: identifica la app, su version y su proceso", pg["app"] == "clipmaker" and pg["version"] == (HERE / "VERSION").read_text().strip() and pg["pid"] == _os.getpid(), pg)
+check("shutdown sin cabecera -> 403", c.post("/api/shutdown").status_code == 403)
+check("shutdown con cabecera incorrecta -> 403", c.post("/api/shutdown", headers={"X-Clipmaker": "0"}).status_code == 403
+      and c.post("/api/shutdown", headers={"X-Clipmaker": "true"}).status_code == 403)
+check("shutdown con JSON de otra pagina (sin cabecera propia) -> 403", c.post("/api/shutdown", json={"x": 1}, headers={"Origin": "https://evil.example"}).status_code == 403)
+with mock.patch.object(webapp.threading, "Timer") as tm:
+    rs = c.post("/api/shutdown", headers={"X-Clipmaker": "1"})
+    check("shutdown con cabecera correcta -> 200 y programa el cierre", rs.status_code == 200 and rs.json["ok"] is True and tm.called
+          and tm.call_args.args[0] == 0.5 and tm.return_value.start.called)
+check("shutdown: GET no esta permitido", c.get("/api/shutdown").status_code == 405)
+
 # ---- actualizaciones ----
 import updater as _upd
 _upd.CONFIG_FILES = (Path(_tf.mkdtemp()) / "nada.json",)

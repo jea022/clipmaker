@@ -26,4 +26,5 @@ if __name__ == "__main__":
     img = draw()
     img.save(OUT / "clipmaker.png")
     img.save(OUT / "clipmaker.ico", sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)])
-    print("OK static/clipmaker.png y static/clipmaker.ico")
+    img.save(OUT / "clipmaker.icns")
+    print("OK static/clipmaker.png, .ico (Windows) y .icns (Mac)")

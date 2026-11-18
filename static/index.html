@@ -87,7 +87,7 @@
 </style>
 </head>
 <body>
-<header><h1>Clipmaker</h1><span style="color:var(--muted)">clip horizontal → vertical con plantilla</span><span id="ver" style="margin-left:auto;color:var(--muted);font-size:12px"></span></header>
+<header><h1>Clipmaker</h1><span style="color:var(--muted)">clip horizontal → vertical con plantilla</span><span id="ver" style="margin-left:auto;color:var(--muted);font-size:12px"></span><button class="ghost" id="quit" title="Cierra Clipmaker por completo">Cerrar Clipmaker</button></header>
 <div id="update" class="banner" style="display:none"><span id="updtxt"></span><button id="updbtn">Actualizar ahora</button></div>
 <main>
   <div>
@@ -689,6 +689,13 @@ $('ytup').onclick = async () => {
     $('ytmsg').append('Subido: ', a);
   } catch (e) { $('ytmsg').textContent = e.message; }
   $('ytup').disabled = false;
+};
+
+$('quit').onclick = async () => {
+  if (!confirm('¿Cerrar Clipmaker? Para abrirlo otra vez usa su icono del escritorio.')) return;
+  try { await fetch('/api/shutdown', { method: 'POST', headers: { 'X-Clipmaker': '1' } }); } catch {}
+  document.body.innerHTML = '<div style="max-width:520px;margin:20vh auto;padding:0 20px;text-align:center;font:16px/1.5 system-ui,sans-serif;color:#f2f2f7">'
+    + '<h2 style="margin:0 0 8px">Clipmaker se cerró</h2><p style="color:#9a9ab0">Ya puedes cerrar esta pestaña. Para abrirlo otra vez usa su icono del escritorio.</p></div>';
 };
 
 async function updateFlow() {

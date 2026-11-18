@@ -1,0 +1,6 @@
+# Los archivos de Windows que se ejecutan con doble clic necesitan finales de linea CRLF.
+# (run.bat se deja como esta a proposito: cambiarlo mientras alguien lo tiene abierto podria romperlo.)
+Clipmaker.vbs text eol=crlf
+crear_acceso_directo.bat text eol=crlf
+*.sh text eol=lf
+launcher.py text eol=lf

@@ -187,6 +187,12 @@ const path = require('path');
     && (await page.$eval('input[name=tfont]:checked', e => e.value)) === 'inter'
     && (await page.$eval('#upper', e => e.checked)) && (await visible('#grp-band'));
 
+  // h2) boton para cerrar Clipmaker
+  checks.quitButton = (await page.textContent('#quit')).includes('Cerrar Clipmaker');
+  page.once('dialog', d => d.dismiss());
+  await page.click('#quit');
+  checks.quitCancelKeepsRunning = (await page.$eval('#presets', e => !!e)) && await page.evaluate(() => fetch('/api/ping').then(r => r.json()).then(j => j.app === 'clipmaker'));
+
   // i) editor de hashtags
   const val = sel => page.$eval(sel, e => e.value);
   await page.waitForFunction(() => document.querySelector('#ht-always').value !== '');

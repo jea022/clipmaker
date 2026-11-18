@@ -3,21 +3,29 @@
 Convierte un clip horizontal de stream en un video vertical 1080x1920: **cámara arriba, título en el centro, gameplay abajo**, con la plantilla de cada cuenta (`@wganga_clips`, `@gtaHispaClips`). Genera también el caption y los hashtags.
 
 ## Instalar (una vez)
-1. Python 3.10+ (Windows: `winget install Python.Python.3.12`). En Windows ffmpeg no hace falta instalarlo: `run.bat` lo descarga solo la primera vez (~200 MB) a la carpeta `bin/`. En Mac: `brew install ffmpeg`.
-2. Doble clic en `run.bat` (Windows) o `./run.sh` (Mac/Linux). Crea el entorno solo y abre http://127.0.0.1:5000.
-3. Windows puede mostrar el aviso de SmartScreen: "Más información" → "Ejecutar de todas formas". Si la descarga de ffmpeg falla, instálalo a mano con `winget install Gyan.FFmpeg` y ciérrala y ábrela de nuevo.
+1. Python 3.9+ (Windows: `winget install Python.Python.3.12`; Mac: `brew install python@3.12`). ffmpeg: en Windows se descarga solo la primera vez (~200 MB, a la carpeta `bin/`); en Mac: `brew install ffmpeg`.
+2. Doble clic en `crear_acceso_directo.bat` (Windows) o ejecuta `./crear_acceso_directo.sh` (Mac/Linux): crea el icono **Clipmaker** en el escritorio.
+3. Abre **Clipmaker** desde el escritorio. La primera vez aparece una página que muestra cómo se prepara todo (entorno, librerías, ffmpeg); al terminar, la app se abre sola.
+4. Windows puede mostrar el aviso de SmartScreen: "Más información" → "Ejecutar de todas formas". Si la descarga de ffmpeg falla, la página te lo dice y puedes pulsar "Reintentar" o instalarlo a mano con `winget install Gyan.FFmpeg`.
+5. Alternativa con consola: `run.bat` (Windows) o `./run.sh` (Mac/Linux) abren la app en una ventana de texto, útil para ver errores.
 
 ## Instalar en Mac
 1. Instala [Homebrew](https://brew.sh) si no lo tienes, y en Terminal: `brew install python@3.12 ffmpeg`.
 2. Descarga el proyecto: https://github.com/jea022/clipmaker/archive/refs/heads/main.zip y descomprímelo donde quieras dejarlo.
 3. En Terminal, dentro de esa carpeta: `./run.sh`. La primera vez crea el entorno y abre el navegador. **En Mac usa el puerto 5055** (el 5000 lo ocupa AirPlay Receiver); si el 5055 también está ocupado: `./run.sh 5056`.
-4. Acceso directo: `./crear_acceso_directo.sh` crea `Clipmaker.command` en el escritorio.
-5. Si macOS bloquea los archivos: `chmod +x run.sh crear_acceso_directo.sh` y `xattr -dr com.apple.quarantine .` dentro de la carpeta; o clic derecho → Abrir.
+4. Icono: `./crear_acceso_directo.sh` crea **Clipmaker.app** en el escritorio (con su icono). La primera vez, si macOS pregunta, clic derecho → Abrir.
+5. Si macOS bloquea los archivos: `chmod +x run.sh crear_acceso_directo.sh launcher.py` y `xattr -dr com.apple.quarantine .` dentro de la carpeta.
 6. Para llevar tus ajustes desde otro equipo, copia la carpeta `data/` (y `secrets/` si subes a YouTube).
 Las actualizaciones automáticas funcionan igual que en Windows.
 
-## Acceso directo en el escritorio
-Una vez, doble clic en `crear_acceso_directo.bat` (Windows) o ejecuta `./crear_acceso_directo.sh` (Mac/Linux). Aparece "Clipmaker" en el escritorio; al abrirlo arranca la app y se abre el navegador. No muevas la carpeta del proyecto después (si la mueves, vuelve a ejecutarlo).
+## Abrir y cerrar (sin consola)
+El icono abre Clipmaker **sin ventana de consola**: la app corre en segundo plano y sigue viva aunque cierres el navegador o la pestaña.
+- Si lo abres otra vez, no se duplica: solo abre el navegador en la copia que ya está corriendo.
+- Para cerrarla del todo usa el botón **Cerrar Clipmaker** (arriba a la derecha).
+- Tras una actualización se reinicia sola; si se cae, vuelve a arrancar (si se cae 3 veces seguidas te avisa).
+- Si algo falla, el registro está en `data/clipmaker.log`.
+- No muevas la carpeta del proyecto después de crear el icono (si la mueves, vuelve a ejecutar el instalador del acceso directo).
+- Si ya usabas un acceso directo anterior (el que abría `run.bat` con la ventana negra), vuelve a ejecutar `crear_acceso_directo.bat` para reemplazarlo.
 
 ## Usar
 1. Arrastra el clip principal; debajo del cuadro verás el progreso de la subida.
@@ -61,4 +69,4 @@ Se activa copiando `update.example.json` a `update.json` y poniendo la direcció
 Cada versión nueva debe subir el número del archivo `VERSION`.
 
 ## Pruebas
-`python test_clipmaker.py` (montaje), `python test_api.py` (web), `python test_publish.py` (YouTube), `python test_updater.py` (actualizaciones), `node test_ui.js` (navegador; necesita el servidor en marcha).
+`python test_clipmaker.py` (montaje), `python test_api.py` (web), `python test_publish.py` (YouTube), `python test_updater.py` (actualizaciones), `python test_captions.py` (hashtags), `python test_launcher.py` (lanzador, incluye una primera instalación real), `python test_shortcuts.py` (accesos directos), `python test_portability.py` (Mac/Linux), `node test_ui.js` (navegador; necesita el servidor en marcha) y `node test_ui_quit.js` (cierre).

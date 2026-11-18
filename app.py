@@ -465,6 +465,19 @@ def api_update_apply():
     return jsonify(result)
 
 
+@app.get("/api/ping")
+def api_ping():
+    return jsonify(app="clipmaker", version=updater.local_version(), pid=os.getpid())
+
+
+@app.post("/api/shutdown")
+def api_shutdown():
+    if request.headers.get("X-Clipmaker") != "1":
+        return jsonify(error="Petición no permitida"), 403
+    threading.Timer(0.5, lambda: os._exit(0)).start()
+    return jsonify(ok=True)
+
+
 def port_busy(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
