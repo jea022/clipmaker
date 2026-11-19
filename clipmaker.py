@@ -202,7 +202,7 @@ def pick_bright_timestamp(clip, dur, base=3.0, threshold=25.0):
     para no repetir los ffmpeg en cada actualizacion de la vista previa."""
     try:
         st = Path(clip).stat()
-        key = (str(clip), st.st_mtime_ns, st.st_size)
+        key = (str(clip), st.st_mtime_ns, st.st_size, round(dur, 1))
     except OSError:
         key = None
     if key in _BRIGHT_CACHE:
@@ -519,8 +519,11 @@ def cover(label_in, w, h, label_out):
             f"crop={w}:{h},setsar=1[{label_out}]")
 
 
+TRIM_END_MAX = 10  # segundos que se pueden quitar del final (marca de agua de los clips de Kick: 3)
+
+
 def build(clip, title, cfg, out_path, no_cam=False, preset="cam_game", clip_b=None, image=None, audio="a",
-          progress_cb=None, still=False):
+          progress_cb=None, still=False, trim_end=0):
     if preset not in PRESETS:
         raise ValueError(f"Variación desconocida: {preset} (opciones: {', '.join(PRESETS)})")
     spec = PRESETS[preset]
@@ -555,6 +558,12 @@ def build(clip, title, cfg, out_path, no_cam=False, preset="cam_game", clip_b=No
             title_pos = (title_z[0], title_z[1])
 
         dur_a = probe_duration(clip)
+        if trim_end:
+            if not 0 < trim_end <= TRIM_END_MAX:
+                raise ValueError(f"Los segundos a quitar del final deben estar entre 0 y {TRIM_END_MAX}")
+            if dur_a - trim_end < 1.0:
+                raise ValueError(f"El clip dura {dur_a:.1f} s: no se pueden quitar los últimos {trim_end:g} s")
+            dur_a -= trim_end
         seek = ["-ss", f"{pick_bright_timestamp(clip, dur_a):.2f}"] if still else []
         inputs, n = [*seek, "-i", str(clip)], 1
         idx = {}
@@ -694,6 +703,8 @@ def main():
     p.add_argument("--clip-b", help="segundo video (variación clip_clip)")
     p.add_argument("--image", help="imagen (variaciones clip_image / image_clip)")
     p.add_argument("--audio", default="a", choices=AUDIO_CHOICES, help="audio: del clip A, del B o sin audio")
+    p.add_argument("--trim-end", type=float, default=0, metavar="SEG",
+                   help="quita los ultimos SEG segundos del video (p. ej. 3 para la marca de agua de Kick)")
     p.add_argument("--game", help="recorte del gameplay: x,y,w,h en fracciones 0-1")
     p.add_argument("--title-height", type=float, help=f"alto de la franja del título en px {TITLE_HEIGHT_RANGE}")
     p.add_argument("--font-size", type=float, help=f"tamaño de letra máximo del título {FONT_SIZE_RANGE}")
@@ -757,7 +768,8 @@ def main():
         print(f"\r  montando… {int(frac * 100):3d}%", end="" if frac < 1 else "\n", flush=True)
 
     try:
-        build(clip, a.title, cfg, out, a.no_cam, a.preset, a.clip_b, a.image, a.audio, progress_cb=show)
+        build(clip, a.title, cfg, out, a.no_cam, a.preset, a.clip_b, a.image, a.audio, progress_cb=show,
+              trim_end=a.trim_end)
     except ValueError as e:
         sys.exit(str(e))
     except subprocess.CalledProcessError:

@@ -70,6 +70,24 @@ check("descarga video", out.status_code == 200 and out.data[:4] != b"", out.stat
 dl = c.get(r.json["download"])
 check("descarga con attachment", "attachment" in dl.headers.get("Content-Disposition", ""))
 
+# ---- quitar los ultimos segundos (marca de agua de Kick) ----
+_outp = webapp.WORK / jid / "out.mp4"
+render()
+_full = webapp.clipmaker.probe_duration(_outp)
+r_trim = render(trim_end=3)
+_cut = webapp.clipmaker.probe_duration(_outp)
+check("trim_end=3: el video final dura 3 s menos", r_trim.status_code == 200 and abs((_full - _cut) - 3) < 0.3, (_full, _cut))
+check("trim_end=0: no recorta nada", render(trim_end=0).status_code == 200 and abs(webapp.clipmaker.probe_duration(_outp) - _full) < 0.3)
+check("trim_end fuera de rango -> 400", render(trim_end=99).status_code == 400)
+check("trim_end negativo -> 400", render(trim_end=-1).status_code == 400)
+check("trim_end texto -> 400", render(trim_end="3").status_code == 400)
+check("trim_end booleano -> 400", render(trim_end=True).status_code == 400)
+r_long = render(trim_end=int(_full) + 1) if int(_full) + 1 <= 10 else None
+if r_long is not None:
+    check("trim_end mayor que el clip -> 400 con mensaje claro", r_long.status_code == 400 and "no se pueden quitar" in r_long.json["error"], r_long.status_code)
+render()
+
+
 r = render(no_cam=True, cam=None)
 check("render sin camara", r.status_code == 200)
 

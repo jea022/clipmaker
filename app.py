@@ -276,6 +276,9 @@ def prepare_render(data):
     if audio == "b" and not clip_b:
         return None, (jsonify(error="Para usar el audio del video B primero súbelo"), 400)
     no_cam = bool(data.get("no_cam")) and spec["uses_cam"]
+    trim_end = data.get("trim_end", 0)
+    if isinstance(trim_end, bool) or not isinstance(trim_end, (int, float)) or not 0 <= trim_end <= clipmaker.TRIM_END_MAX:
+        return None, (jsonify(error=f"Los segundos a quitar del final deben estar entre 0 y {clipmaker.TRIM_END_MAX}"), 400)
     eff = account_settings(account, cfg)
     ov = dict(cam=eff["cam_crop"], game=eff["game_crop"], title_height=eff["title_height"], font_size=eff["font_size"],
               title_style=eff["title_style"], font=eff["font"], split=eff["title_split"], offset=eff["title_offset"],
@@ -295,7 +298,7 @@ def prepare_render(data):
         return None, (jsonify(error="Juego del clip no válido"), 400)
     return dict(d=d, title=title, cfg=cfg, preset=preset, clip_b=clip_b, image=image, audio=audio, no_cam=no_cam,
                 src=next(p for p in d.iterdir() if p.stem == "source"), out=d / "out.mp4",
-                account=account, people=people, game=game), None
+                account=account, people=people, game=game, trim_end=trim_end), None
 
 
 def render_result(p):
@@ -306,7 +309,7 @@ def render_result(p):
 
 def run_build(p, progress_cb=None):
     clipmaker.build(p["src"], p["title"], p["cfg"], p["out"], p["no_cam"], p["preset"], p["clip_b"],
-                    p["image"], p["audio"], progress_cb=progress_cb)
+                    p["image"], p["audio"], progress_cb=progress_cb, trim_end=p["trim_end"])
 
 
 @app.post("/api/render")
@@ -316,6 +319,8 @@ def api_render():
         return err
     try:
         run_build(p)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
     except subprocess.CalledProcessError:
         return jsonify(error="Falló el montaje del video (ffmpeg)"), 500
     return jsonify(render_result(p))
@@ -346,7 +351,7 @@ def api_render_start():
         except Exception as e:
             app.logger.exception("fallo montando video")
             msg = "Falló el montaje del video (ffmpeg)" if isinstance(e, subprocess.CalledProcessError) \
-                else "Falló el montaje del video"
+                else str(e) if isinstance(e, ValueError) else "Falló el montaje del video"
             task.update(state="error", error=msg)
 
     threading.Thread(target=work, daemon=True).start()
@@ -619,7 +624,9 @@ def api_preview():
                 return "", 409
             try:
                 clipmaker.build(p["src"], p["title"], p["cfg"], still, p["no_cam"], p["preset"], p["clip_b"],
-                                p["image"], p["audio"], still=True)
+                                p["image"], p["audio"], still=True, trim_end=p["trim_end"])
+            except ValueError as e:
+                return jsonify(error=str(e)), 400
             except subprocess.CalledProcessError:
                 return jsonify(error="No pude generar la vista previa"), 500
         if stale():
