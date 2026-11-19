@@ -589,7 +589,7 @@ def build(clip, title, cfg, out_path, no_cam=False, preset="cam_game", clip_b=No
         f = []
         if uses_a:
             outs = "".join(f"[a{i}]" for i in range(len(uses_a)))
-            f.append(f"[0:v]split={len(uses_a)}{outs}")
+            f.append(f"[0:v]setpts=PTS-STARTPTS,split={len(uses_a)}{outs}")
         f.append(f"[{idx['bg']}:v]format=rgba[base]")
         last, a_i = "base", 0
         gw, gh, gx, gy = crop_box(cfg["game_crop"], sw, sh)
