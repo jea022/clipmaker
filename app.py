@@ -15,6 +15,7 @@ from pathlib import Path
 from flask import Flask, Response, abort, jsonify, request, send_from_directory
 
 import captions
+import cliplist
 import clipmaker
 import publish_youtube
 import updater
@@ -404,6 +405,32 @@ def api_publish_youtube():
 def hashtag_view(account):
     return {"config": captions.effective(account), "defaults": captions.defaults(account),
             "customized": captions.is_customized(account)}
+
+
+@app.get("/api/clips")
+def api_clips():
+    return jsonify(cliplist.get())
+
+
+@app.post("/api/clips")
+def api_clips_add():
+    d = request.get_json(silent=True) or {}
+    try:
+        clip = cliplist.add(d.get("streamer", ""), d.get("time", ""), d.get("note", ""), d.get("source", ""))
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    return jsonify(clip), 201
+
+
+@app.delete("/api/clips/<streamer>/<clip_id>")
+def api_clips_remove(streamer, clip_id):
+    try:
+        cliplist.remove(streamer, clip_id)
+    except ValueError as e:
+        return jsonify(error=str(e)), 400
+    except KeyError as e:
+        return jsonify(error=e.args[0]), 404
+    return jsonify(ok=True)
 
 
 @app.get("/api/hashtags")
