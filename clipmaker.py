@@ -167,7 +167,7 @@ def render_background(cfg, out_png):
         Image.new("RGBA", (cw, ch), cfg["background_color"]).save(out_png)
 
 
-def extract_frame(clip, out_png, t=1.0):
+def extract_frame(clip, out_png, t=3.0):
     dur = probe_duration(clip)
     t = min(t, max(dur - 0.1, 0))
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}", "-i", str(clip),
