@@ -21,11 +21,19 @@ if _LOCAL_BIN.is_dir():
 
 FFMPEG_ERROR_LOG = Path(__file__).parent / "data" / "ffmpeg_errors.log"
 
+IS_WIN = os.name == "nt"
+NO_WINDOW = 0x08000000 if IS_WIN else 0  # subprocess.CREATE_NO_WINDOW
+
+
+def _quiet_kwargs():
+    """En Windows evita que cada llamada a ffmpeg/ffprobe abra su propia ventana de consola."""
+    return {"creationflags": NO_WINDOW} if IS_WIN else {}
+
 
 def _low_priority_kwargs():
-    """Argumentos extra para que ffmpeg monte el video sin robarle CPU al resto del sistema."""
-    if os.name == "nt":
-        return {"creationflags": getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)}
+    """Como _quiet_kwargs, y ademas el montaje corre a prioridad baja para no robarle CPU al resto del sistema."""
+    if IS_WIN:
+        return {"creationflags": NO_WINDOW | getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)}
     return {"preexec_fn": lambda: os.nice(10)}
 
 
@@ -49,7 +57,7 @@ def probe_size(path):
     out = subprocess.check_output(
         ["ffprobe", "-v", "error", "-select_streams", "v:0",
          "-show_entries", "stream=width,height", "-of", "csv=p=0", str(path)],
-        text=True,
+        text=True, **_quiet_kwargs(),
     ).strip()
     w, h = (int(v) for v in out.split(",")[:2])
     if w <= 0 or h <= 0:
@@ -61,7 +69,7 @@ def probe_duration(path):
     out = subprocess.check_output(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
          "-of", "csv=p=0", str(path)],
-        text=True,
+        text=True, **_quiet_kwargs(),
     ).strip()
     return float(out)
 
@@ -80,7 +88,7 @@ def has_audio(path):
     out = subprocess.check_output(
         ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
          "stream=index", "-of", "csv=p=0", str(path)],
-        text=True,
+        text=True, **_quiet_kwargs(),
     ).strip()
     return bool(out)
 
@@ -163,7 +171,7 @@ def extract_frame(clip, out_png, t=1.0):
     dur = probe_duration(clip)
     t = min(t, max(dur - 0.1, 0))
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}", "-i", str(clip),
-                    "-frames:v", "1", str(out_png)], check=True)
+                    "-frames:v", "1", str(out_png)], check=True, **_quiet_kwargs())
 
 
 def preview(clip, cfg, out_png):
