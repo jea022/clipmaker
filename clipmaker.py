@@ -48,6 +48,22 @@ def log_ffmpeg_error(cmd, lines):
         pass
 
 
+PREVIEW_DEBUG_LOG = Path(__file__).parent / "data" / "preview_debug.log"
+
+
+def log_preview_debug(**fields):
+    """Diagnostico temporal: registra con que recortes y que frame se arma cada
+    vista previa, para poder revisar la causa real de una vista previa en negro
+    sin tener que reproducirla a ciegas."""
+    try:
+        PREVIEW_DEBUG_LOG.parent.mkdir(exist_ok=True)
+        line = " ".join(f"{k}={v}" for k, v in fields.items())
+        with PREVIEW_DEBUG_LOG.open("a", encoding="utf-8") as f:
+            f.write(f"[{datetime.now().isoformat(timespec='seconds')}] {line}\n")
+    except OSError:
+        pass
+
+
 def resolve(p):
     p = Path(p)
     return p if p.is_absolute() else Path(__file__).parent / p
@@ -199,6 +215,7 @@ def pick_bright_timestamp(clip, dur, base=3.0, threshold=25.0):
             seen.add(t)
             candidates.append(t)
     best_t, best_b = candidates[0], -1.0
+    tried = []
     with tempfile.TemporaryDirectory() as td:
         probe_png = Path(td) / "probe.png"
         for t in candidates:
@@ -206,12 +223,16 @@ def pick_bright_timestamp(clip, dur, base=3.0, threshold=25.0):
                 subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}", "-i", str(clip),
                                 "-frames:v", "1", str(probe_png)], check=True, **_quiet_kwargs())
             except subprocess.CalledProcessError:
+                tried.append(f"{t}=error")
                 continue
             b = _frame_brightness(probe_png)
+            tried.append(f"{t}={b:.1f}")
             if b > best_b:
                 best_t, best_b = t, b
             if b >= threshold:
                 break
+    log_preview_debug(clip=Path(clip).name, dur=f"{dur:.1f}", threshold=threshold,
+                       candidatos=",".join(tried), elegido=f"{best_t}({best_b:.1f})")
     if key:
         _BRIGHT_CACHE[key] = best_t
     return best_t
@@ -572,11 +593,17 @@ def build(clip, title, cfg, out_path, no_cam=False, preset="cam_game", clip_b=No
         f.append(f"[{idx['bg']}:v]format=rgba[base]")
         last, a_i = "base", 0
         gw, gh, gx, gy = crop_box(cfg["game_crop"], sw, sh)
+        if still:
+            log_preview_debug(preset=preset, no_cam=no_cam, source=f"{sw}x{sh}",
+                               game_crop=cfg["game_crop"], game_px=f"{gw}x{gh}+{gx}+{gy}",
+                               cam_crop=cfg.get("cam_crop"))
         for i, (zname, kind) in enumerate(slots):
             zx, zy, zw, zh = zone_of(cfg, preset, zname)
             lab = f"s{i}"
             if kind == "cam":
                 kw, kh, kx, ky = crop_box(cfg["cam_crop"], sw, sh)
+                if still:
+                    log_preview_debug(cam_px=f"{kw}x{kh}+{kx}+{ky}", zona_top=f"{zx},{zy},{zw},{zh}")
                 f.append(f"[a{a_i}]crop={kw}:{kh}:{kx}:{ky}[c{i}]")
                 f.append(cover(f"c{i}", zw, zh, lab)); a_i += 1
                 pos = f"{zx}:{zy}"
