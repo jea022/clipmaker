@@ -15,6 +15,9 @@ SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 MAX_SHORT_SECONDS = 180
 GAMING_CATEGORY = "20"
 
+NO_WINDOW = 0x08000000 if os.name == "nt" else 0  # subprocess.CREATE_NO_WINDOW
+_QUIET = {"creationflags": NO_WINDOW} if os.name == "nt" else {}
+
 
 def secret_paths(account):
     client = SECRETS / f"client_secret_{account}.json"
@@ -29,7 +32,7 @@ def validate_video(path):
         raise ValueError(f"No existe el video: {path}")
     out = subprocess.check_output(
         ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
-         "stream=width,height:format=duration", "-of", "json", str(p)], text=True)
+         "stream=width,height:format=duration", "-of", "json", str(p)], text=True, **_QUIET)
     info = json.loads(out)
     w, h = info["streams"][0]["width"], info["streams"][0]["height"]
     dur = float(info["format"]["duration"])
