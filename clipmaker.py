@@ -484,7 +484,7 @@ def build(clip, title, cfg, out_path, no_cam=False, preset="cam_game", clip_b=No
             title_pos = (title_z[0], title_z[1])
 
         dur_a = probe_duration(clip)
-        seek = ["-ss", f"{min(1.0, dur_a * 0.4):.2f}"] if still else []
+        seek = ["-ss", f"{min(3.0, dur_a * 0.4):.2f}"] if still else []
         inputs, n = [*seek, "-i", str(clip)], 1
         idx = {}
         if "clip_b" in spec["needs"] or audio == "b":
