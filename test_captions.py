@@ -152,5 +152,27 @@ check("cursor corrupto reinicia en 0", cp.next_cursor("wganga") == 0)
 cp.CURSOR_FILE.write_text(json.dumps({"wganga": -4}))
 check("cursor negativo reinicia en 0", cp.next_cursor("wganga") == 0)
 
+# ---- frases finales del caption (editables, se alternan entre clips) ----
+facto = cp.ACCOUNTS["wganga"]["ctas"]
+check("frases: sin personalizar usan las de fabrica", cp.effective("wganga")["ctas"] == facto)
+caps4 = [cp.generate("wganga", "Mismo titulo", [], c)["tiktok_caption"] for c in range(len(facto))]
+check("frases: con el MISMO titulo se alternan entre clips", len({t.split(" #")[0] for t in caps4}) == len(facto), caps4)
+check("frases: el ciclo se repite en orden", cp.generate("wganga", "x", [], len(facto))["tiktok_caption"].split(" #")[0].endswith(facto[0]))
+mine = cp.save_config("wganga", {**cp.effective("wganga"), "ctas": ["  Frase   uno ", "Frase dos", "Frase uno", ""]})
+check("frases: se limpian espacios, vacias y repetidas", mine["ctas"] == ["Frase uno", "Frase dos"], mine["ctas"])
+check("frases: se guardan y se usan", cp.generate("wganga", "T", [], 0)["tiktok_caption"].startswith("T Frase uno")
+      and cp.generate("wganga", "T", [], 1)["tiktok_caption"].startswith("T Frase dos"))
+cp.save_config("wganga", {**cp.effective("wganga"), "ctas": []})
+check("frases: lista vacia = caption sin frase final", cp.generate("wganga", "Solo titulo", [], 0)["tiktok_caption"].startswith("Solo titulo #"))
+for bad, why in ((["x" * (cp.MAX_CTA_LEN + 1)], "muy larga"), ([str(i) for i in range(cp.MAX_CTAS + 1)], "demasiadas"), ("texto", "no es lista"), ([5], "no es texto")):
+    try:
+        cp.validate_config({"ctas": bad})
+        ok = False
+    except ValueError:
+        ok = True
+    check(f"frases: se rechaza {why}", ok)
+cp.reset_config("wganga")
+check("frases: restablecer vuelve a las de fabrica", cp.effective("wganga")["ctas"] == facto)
+
 print(f"\n{len(fails)} fallos")
 sys.exit(1 if fails else 0)

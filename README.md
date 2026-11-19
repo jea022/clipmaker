@@ -15,7 +15,7 @@ Convierte un clip horizontal de stream en un video vertical 1080x1920: **cámara
 3. En Terminal, dentro de esa carpeta: `./run.sh`. La primera vez crea el entorno y abre el navegador. **En Mac usa el puerto 5055** (el 5000 lo ocupa AirPlay Receiver); si el 5055 también está ocupado: `./run.sh 5056`.
 4. Icono: `./crear_acceso_directo.sh` crea **Clipmaker.app** en el escritorio (con su icono). La primera vez, si macOS pregunta, clic derecho → Abrir.
 5. Si macOS bloquea los archivos: `chmod +x run.sh crear_acceso_directo.sh launcher.py` y `xattr -dr com.apple.quarantine .` dentro de la carpeta.
-6. Para llevar tus ajustes desde otro equipo, copia la carpeta `data/` (y `secrets/` si subes a YouTube).
+6. Para llevar tus ajustes desde otro equipo, copia la carpeta `data/` (y `secrets/` si subes a YouTube por consola).
 Las actualizaciones automáticas funcionan igual que en Windows.
 
 ## Abrir y cerrar (sin consola)
@@ -60,10 +60,10 @@ Cada cuenta tiene su lista recomendada (basada en una investigación de hashtags
 ## Tu diseño de Canva
 Exporta 1080x1920: un PNG de **fondo** y uno **transparente** de overlay. Cópialos a `templates/` y en `templates/<cuenta>.json` cambia `background_png` y `overlay_png`. Las zonas (`cam_zone`, `title_zone`, `game_zone`) se ajustan en el mismo archivo.
 
-## Subir a YouTube Shorts (API oficial)
+## Subir a YouTube Shorts por consola (opcional)
 1. En Google Cloud Console crea un proyecto, activa **YouTube Data API v3** y crea credenciales OAuth tipo "Aplicación de escritorio". Descarga el JSON a `secrets/client_secret.json` (o `secrets/client_secret_wganga.json` por cuenta).
 2. En la pantalla de consentimiento, añade como usuarios de prueba los emails de tus canales.
-3. Botón "Subir a YouTube Shorts" en la web, o `python publish_youtube.py video.mp4 "Título" --account wganga --people westcol`. La primera vez inicias sesión en el navegador; el token queda en `secrets/` (nunca se guarda tu contraseña).
+3. Desde la web ya no se sube: se publica a mano con los textos del panel "Textos para publicar". Por consola sigue disponible `python publish_youtube.py video.mp4 "Título" --account wganga --people westcol`. La primera vez inicias sesión en el navegador; el token queda en `secrets/` (nunca se guarda tu contraseña).
 
 Importante: por defecto sube como **privado**. Google deja en privado los videos subidos por API desde proyectos sin auditar; para publicar en abierto hay que pasar su auditoría o cambiar la visibilidad a mano en YouTube Studio. Cuota: ~6 subidas/día por proyecto de Cloud.
 
@@ -73,6 +73,10 @@ Importante: por defecto sube como **privado**. Google deja en privado los videos
 La app puede avisarte cuando hay una versión nueva y actualizarse con un clic (se reinicia sola y no toca tus ajustes, tu entorno, ffmpeg ni tus credenciales; guarda una copia de seguridad en `data/backups/`).
 Se activa copiando `update.example.json` a `update.json` y poniendo la dirección del repositorio de GitHub donde se publican las versiones. Solo se aceptan descargas por https desde github.com. Con `"auto": true` se actualiza sola al abrirse, sin preguntar.
 Cada versión nueva debe subir el número del archivo `VERSION`.
+
+## Textos para publicar
+
+Al terminar el montaje, el panel **Textos para publicar** muestra, listos para copiar, el caption de **TikTok e Instagram** (el mismo, con sus hashtags) y el título y la descripción de **YouTube Shorts**. Los hashtags salen de tu configuración de la cuenta. Cada texto es **editable** en el mismo panel (con **Restablecer** para volver al generado). La frase final del caption (¿Tú qué hubieras hecho?, etc.) se **alterna entre clips**, y puedes cambiarla por cuenta en *Hashtags › Frases finales*.
 
 ## Directos (descargar minutos de un VOD)
 

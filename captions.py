@@ -49,11 +49,13 @@ COUNT_RANGE = (3, 15)
 POOL_KEYS = ("always", "niche", "broad", "reserve", "rp", "to_verify")
 LIMITS = {"always": 5, "niche": 80, "broad": 80, "reserve": 80, "rp": 40, "to_verify": 80}
 MAX_PEOPLE = 40
+MAX_CTAS = 10
+MAX_CTA_LEN = 80
 MAX_TAGS_PER_PERSON = 5
 TAG_RE = re.compile(r"^#\w{2,60}$")
 KEY_RE = re.compile(r"^[a-z0-9]{2,30}$")
 EMPTY = {"always": [], "niche": [], "broad": [], "reserve": [], "rp": [], "to_verify": [], "people": {},
-         "count_tiktok": 5, "count_shorts": 3, "shorts_tag": True}
+         "count_tiktok": 5, "count_shorts": 3, "shorts_tag": True, "ctas": None}
 
 
 # ---------- validacion y normalizacion ----------
@@ -120,6 +122,26 @@ def _count(value, label):
     return int(round(value))
 
 
+def normalize_ctas(items):
+    """Frases finales del caption: una por linea, sin repetir. Lista vacia = sin frase final."""
+    if not isinstance(items, list):
+        raise ValueError("Las frases finales no son una lista")
+    out = []
+    for raw in items:
+        if not isinstance(raw, str):
+            raise ValueError("Cada frase final debe ser texto")
+        t = " ".join(raw.split())
+        if not t:
+            continue
+        if len(t) > MAX_CTA_LEN:
+            raise ValueError(f"Una frase final pasa de {MAX_CTA_LEN} caracteres: «{t[:30]}…»")
+        if t not in out:
+            out.append(t)
+    if len(out) > MAX_CTAS:
+        raise ValueError(f"Máximo {MAX_CTAS} frases finales")
+    return out
+
+
 def validate_config(cfg):
     """Devuelve la configuración normalizada o lanza ValueError con un mensaje claro."""
     if not isinstance(cfg, dict):
@@ -138,7 +160,16 @@ def validate_config(cfg):
         if not isinstance(cfg["shorts_tag"], bool):
             raise ValueError("«#Shorts» debe ser sí o no")
         out["shorts_tag"] = cfg["shorts_tag"]
+    if "ctas" in cfg:
+        out["ctas"] = None if cfg["ctas"] is None else normalize_ctas(cfg["ctas"])
     return out
+
+
+def _with_ctas(account, cfg):
+    """Si la cuenta no tiene frases propias, usa las de fabrica (asi el editor siempre muestra algo)."""
+    if cfg.get("ctas") is None:
+        cfg = dict(cfg, ctas=list(ACCOUNTS[account]["ctas"]))
+    return cfg
 
 
 # ---------- lectura de configuracion ----------
@@ -158,9 +189,9 @@ def _check_account(account):
 def defaults(account):
     _check_account(account)
     try:
-        return validate_config(_read_json(DEFAULTS_FILE).get(account) or {})
+        return _with_ctas(account, validate_config(_read_json(DEFAULTS_FILE).get(account) or {}))
     except ValueError:
-        return copy.deepcopy(EMPTY)
+        return _with_ctas(account, copy.deepcopy(EMPTY))
 
 
 def effective(account):
@@ -169,7 +200,7 @@ def effective(account):
     saved = _read_json(USER_FILE).get(account)
     if isinstance(saved, dict):
         try:
-            return validate_config(saved)
+            return _with_ctas(account, validate_config(saved))
         except ValueError:
             pass
     return defaults(account)
@@ -297,24 +328,25 @@ def _trim(text, limit):
     return text[: limit - 1].rsplit(" ", 1)[0].rstrip(",.;:") + "…"
 
 
-def _cta(account, title):
-    ctas = ACCOUNTS[account]["ctas"]
-    return ctas[hashlib.sha256(title.encode("utf-8")).digest()[0] % len(ctas)]
+def _cta(account, cfg, cursor):
+    """Frase final del clip: se van alternando por orden de clip (no por el titulo), asi no sale siempre la misma."""
+    ctas = _with_ctas(account, cfg)["ctas"]
+    return ctas[cursor % len(ctas)] if ctas else ""
 
 
 def generate(account, title, people=(), cursor=0, game="gta6", config=None):
     _check_account(account)
     cfg = validate_config(config) if config is not None else effective(account)
     title = " ".join(title.split())
-    cta = _cta(account, title)
     cursor = cursor if isinstance(cursor, int) and not isinstance(cursor, bool) and cursor >= 0 else 0
+    cta = _cta(account, cfg, cursor)
 
     tags, known, unknown = pick(cfg, people, cfg["count_tiktok"], cursor, game)
     yt_tags, _, _ = pick(cfg, people, cfg["count_shorts"], cursor, game)
     if cfg["shorts_tag"]:
         yt_tags = yt_tags + ["#Shorts"]
 
-    text = f"{_trim(title, MAX_CAPTION_TEXT - len(cta) - 1)} {cta}"
+    text = f"{_trim(title, MAX_CAPTION_TEXT - len(cta) - 1)} {cta}" if cta else _trim(title, MAX_CAPTION_TEXT)
     yt_suffix = " #Shorts" if cfg["shorts_tag"] else ""
     return {
         "account": account,

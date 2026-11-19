@@ -16,7 +16,6 @@ from flask import Flask, Response, abort, jsonify, request, send_from_directory
 
 import captions
 import clipmaker
-import publish_youtube
 import streamclips
 import updater
 
@@ -365,41 +364,6 @@ def api_render_status(task_id):
     if task["state"] == "error":
         out["error"] = task["error"]
     return jsonify(out)
-
-
-@app.post("/api/publish-youtube")
-def api_publish_youtube():
-    data = request.get_json(silent=True) or {}
-    d = job_dir(data.get("id"))
-    account = data.get("account")
-    account_layout_path(account)
-    privacy = data.get("privacy", "private")
-    if privacy not in {"private", "unlisted"}:
-        return jsonify(error="Desde aquí solo se sube como privado o no listado"), 400
-    title = " ".join(str(data.get("title", "")).split())
-    if not title or len(title) > MAX_TITLE:
-        return jsonify(error="Título inválido"), 400
-    video = d / "out.mp4"
-    if not video.is_file():
-        return jsonify(error="Primero crea el video"), 400
-    people = [str(p) for p in data.get("people", []) if isinstance(p, str)][:10]
-    game = data.get("clip_game", "gta6")
-    if not isinstance(game, str) or game not in captions.GAMES:
-        return jsonify(error="Juego del clip no válido"), 400
-    cursor = data.get("cursor", 0)
-    cursor = cursor if isinstance(cursor, int) and not isinstance(cursor, bool) and cursor >= 0 else 0
-    try:
-        publish_youtube.validate_video(video)
-        vid = publish_youtube.upload(account, video,
-                                     publish_youtube.build_body(account, title, people, privacy, cursor, game))
-    except ValueError as e:
-        return jsonify(error=str(e)), 400
-    except FileNotFoundError as e:
-        return jsonify(error=str(e)), 400
-    except Exception as e:
-        app.logger.exception("fallo subiendo a YouTube")
-        return jsonify(error=f"YouTube rechazó la subida: {type(e).__name__}"), 502
-    return jsonify(url=f"https://youtube.com/shorts/{vid}", privacy=privacy)
 
 
 def hashtag_view(account):
