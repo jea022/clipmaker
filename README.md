@@ -41,6 +41,7 @@ El icono abre Clipmaker **sin ventana de consola y como ventana de aplicación**
    - **Superpuesto** (caja blanca, negra o amarilla, o texto con contorno blanco o amarillo): los dos videos quedan **pegados** y el texto va encima, centrado en la unión. Con **Parte de arriba** repartes el alto entre ambos videos (30 a 70 %) y con **Subir / bajar el texto** lo mueves desde la unión.
    - Elige la **tipografía** (Inter, Poppins, Anton, Bebas Neue, Archivo Black, Bangers, Luckiest Guy; todas con ñ y tildes) y si va **todo en mayúsculas** o tal como lo escribes.
    - Elige la cuenta y marca quién sale.
+   - **Quitar los últimos 3 s (marca de agua de Kick)**: viene marcada y recuerda tu elección; el video final sale 3 segundos más corto. Desmárcala si el clip no trae marca. Por terminal: `--trim-end 3`.
 4. En **Recortes del clip** elige si dibujas la **cámara** (rojo) o el **gameplay** (verde) y arrastra con el ratón sobre la imagen. "Gameplay completo" quita el recorte. "Guardar como valores por defecto" recuerda recortes, estilo, tipografía, franja, reparto y letra para esa cuenta; "Restablecer valores de fábrica" los borra.
 5. La **vista previa** de la derecha se actualiza sola con cada cambio (puedes apagarla o pulsar "Actualizar").
 6. **Crear video**, descarga y copia los textos.

@@ -353,6 +353,7 @@
       <label>Tipografía</label>
       <div id="fonts" class="chips" role="radiogroup" aria-label="Tipografía"></div>
       <label class="chip solo"><input id="upper" type="checkbox" checked> Todo en mayúsculas</label>
+      <label class="chip solo" title="Los clips de Kick traen una marca de agua en los últimos 3 segundos"><input id="trimend" type="checkbox" checked> Quitar los últimos 3 s (marca de agua de Kick)</label>
       <div class="sliders">
         <div id="grp-band"><label for="titleh">Alto de la franja del título <output id="titleh-out">320 px</output></label>
           <input id="titleh" type="range" min="120" max="560" step="10" value="320"></div>
@@ -859,6 +860,7 @@ const payload = () => ({
   no_cam: $('nocam').checked, preset, audio: $('audio').value,
   title_height: +$('titleh').value, font_size: +$('fsize').value,
   title_style: tstyle, font: tfont, split: +$('split').value, offset: +$('offset').value, uppercase: $('upper').checked,
+  trim_end: $('trimend').checked ? 3 : 0,
   people: [...document.querySelectorAll('#people input:checked')].map(i => i.value), clip_game: $('clipgame').value,
 });
 
@@ -1174,6 +1176,9 @@ $('live-new').onclick = () => {
   setLiveForm(true);
   $('live-url').focus();
 };
+
+$('trimend').checked = store.get('cm_trimend') !== '0';
+$('trimend').onchange = () => { store.set('cm_trimend', $('trimend').checked ? '1' : '0'); schedulePreview(); };
 
 (() => {
   const wide = !window.matchMedia('(max-width:1020px)').matches;
