@@ -175,12 +175,25 @@ def _frame_brightness(path):
         return 255.0
 
 
-def pick_bright_timestamp(clip, dur, base=3.0, threshold=18.0):
+_BRIGHT_CACHE = {}
+
+
+def pick_bright_timestamp(clip, dur, base=3.0, threshold=25.0):
     """Busca un instante del clip que no salga negro: muchos clips arrancan con un
-    corte o una transicion en negro, y tomar el frame justo ahi dejaba la vista
-    previa y el editor de recortes en negro."""
+    corte o una transicion en negro (o tienen tramos oscuros largos), y tomar el
+    frame justo ahi dejaba la vista previa y el editor de recortes en negro.
+    Muestrea todo el clip y se queda con el mas luminoso; el resultado se recuerda
+    para no repetir los ffmpeg en cada actualizacion de la vista previa."""
+    try:
+        st = Path(clip).stat()
+        key = (str(clip), st.st_mtime_ns, st.st_size)
+    except OSError:
+        key = None
+    if key in _BRIGHT_CACHE:
+        return _BRIGHT_CACHE[key]
+    offs = [base, base + 3.0, base + 7.0] + [dur * f for f in (0.25, 0.4, 0.5, 0.6, 0.75, 0.9)]
     seen, candidates = set(), []
-    for off in (base, base + 3.0, base + 7.0, base + 15.0, dur * 0.5):
+    for off in offs:
         t = round(min(max(off, 0), max(dur - 0.1, 0)), 2)
         if t not in seen:
             seen.add(t)
@@ -198,7 +211,9 @@ def pick_bright_timestamp(clip, dur, base=3.0, threshold=18.0):
             if b > best_b:
                 best_t, best_b = t, b
             if b >= threshold:
-                return t
+                break
+    if key:
+        _BRIGHT_CACHE[key] = best_t
     return best_t
 
 
