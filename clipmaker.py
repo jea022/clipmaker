@@ -13,7 +13,7 @@ import unicodedata
 from datetime import datetime
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageStat
 
 _LOCAL_BIN = Path(__file__).parent / "bin"
 if _LOCAL_BIN.is_dir():
@@ -167,9 +167,44 @@ def render_background(cfg, out_png):
         Image.new("RGBA", (cw, ch), cfg["background_color"]).save(out_png)
 
 
-def extract_frame(clip, out_png, t=3.0):
+def _frame_brightness(path):
+    try:
+        with Image.open(path) as img:
+            return ImageStat.Stat(img.convert("L")).mean[0]
+    except Exception:
+        return 255.0
+
+
+def pick_bright_timestamp(clip, dur, base=3.0, threshold=18.0):
+    """Busca un instante del clip que no salga negro: muchos clips arrancan con un
+    corte o una transicion en negro, y tomar el frame justo ahi dejaba la vista
+    previa y el editor de recortes en negro."""
+    seen, candidates = set(), []
+    for off in (base, base + 3.0, base + 7.0, base + 15.0, dur * 0.5):
+        t = round(min(max(off, 0), max(dur - 0.1, 0)), 2)
+        if t not in seen:
+            seen.add(t)
+            candidates.append(t)
+    best_t, best_b = candidates[0], -1.0
+    with tempfile.TemporaryDirectory() as td:
+        probe_png = Path(td) / "probe.png"
+        for t in candidates:
+            try:
+                subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}", "-i", str(clip),
+                                "-frames:v", "1", str(probe_png)], check=True, **_quiet_kwargs())
+            except subprocess.CalledProcessError:
+                continue
+            b = _frame_brightness(probe_png)
+            if b > best_b:
+                best_t, best_b = t, b
+            if b >= threshold:
+                return t
+    return best_t
+
+
+def extract_frame(clip, out_png, t=None):
     dur = probe_duration(clip)
-    t = min(t, max(dur - 0.1, 0))
+    t = pick_bright_timestamp(clip, dur) if t is None else min(t, max(dur - 0.1, 0))
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-ss", f"{t:.2f}", "-i", str(clip),
                     "-frames:v", "1", str(out_png)], check=True, **_quiet_kwargs())
 
@@ -484,7 +519,7 @@ def build(clip, title, cfg, out_path, no_cam=False, preset="cam_game", clip_b=No
             title_pos = (title_z[0], title_z[1])
 
         dur_a = probe_duration(clip)
-        seek = ["-ss", f"{min(3.0, dur_a * 0.4):.2f}"] if still else []
+        seek = ["-ss", f"{pick_bright_timestamp(clip, dur_a):.2f}"] if still else []
         inputs, n = [*seek, "-i", str(clip)], 1
         idx = {}
         if "clip_b" in spec["needs"] or audio == "b":
