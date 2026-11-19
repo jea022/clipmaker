@@ -74,5 +74,9 @@ La app puede avisarte cuando hay una versión nueva y actualizarse con un clic (
 Se activa copiando `update.example.json` a `update.json` y poniendo la dirección del repositorio de GitHub donde se publican las versiones. Solo se aceptan descargas por https desde github.com. Con `"auto": true` se actualiza sola al abrirse, sin preguntar.
 Cada versión nueva debe subir el número del archivo `VERSION`.
 
+## Directos (descargar minutos de un VOD)
+
+Pestaña **Directos**: pega el link de un VOD de Twitch, Kick o YouTube y la lista de minutos (`12`, `45:30`, `1:05:10`). Baja un clip de 1 minuto (o 30 s / 1:30 / 2 min) que empieza en cada marca, sin descargar el directo entero. Los clips aparecen en el panel, se guardan en *Descargas › Clipmaker directos* y con **Usar en el editor** pasan directo al montaje. Un directo en vivo hay que bajarlo cuando termine y tenga VOD.
+
 ## Pruebas
-`python test_clipmaker.py` (montaje), `python test_api.py` (web), `python test_publish.py` (YouTube), `python test_updater.py` (actualizaciones), `python test_captions.py` (hashtags), `python test_launcher.py` (lanzador, incluye una primera instalación real), `python test_shortcuts.py` (accesos directos), `python test_portability.py` (Mac/Linux), `node test_ui.js` (navegador; necesita el servidor en marcha) y `node test_ui_quit.js` (cierre).
+`python test_clipmaker.py` (montaje), `python test_api.py` (web), `python test_publish.py` (YouTube), `python test_updater.py` (actualizaciones), `python test_captions.py` (hashtags), `python test_streamclips.py` (descarga de directos), `python test_launcher.py` (lanzador, incluye una primera instalación real), `python test_shortcuts.py` (accesos directos), `python test_portability.py` (Mac/Linux), `node test_ui.js` (navegador; necesita el servidor en marcha) y `node test_ui_quit.js` (cierre).

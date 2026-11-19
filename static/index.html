@@ -225,12 +225,85 @@
   progress::-moz-progress-bar { background:var(--accent); border-radius:6px; }
 
   @media (prefers-reduced-motion:reduce) { *, *::before, *::after { transition:none !important; animation:none !important; } }
+  /* ───────── Pestañas ───────── */
+  .tabs { display:flex; gap:4px; margin-left:18px; padding:3px; background:var(--surface); border:1px solid var(--line); border-radius:10px; }
+  .tabs button { height:30px; padding:0 14px; background:transparent; color:var(--muted); font-weight:600; font-size:13px; border-radius:7px; }
+  .tabs button:hover:not(:disabled) { filter:none; color:var(--text); }
+  .tabs button[aria-selected=true] { background:var(--surface-2); color:var(--text); box-shadow:inset 0 0 0 1px var(--line-2); }
+  .tabs .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--accent); margin-left:7px; animation:pulse 1.2s infinite; vertical-align:middle; }
+  @keyframes pulse { 50% { opacity:.25; } }
+  [hidden] { display:none !important; }
+
+  /* ───────── Directos (dashboard + drawer) ───────── */
+  .live { padding:28px clamp(24px, 3vw, 56px) 64px; }
+  .live-body { display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:28px; align-items:start; transition:grid-template-columns .25s var(--ease), gap .25s var(--ease); }
+  .live-body.closed { grid-template-columns:minmax(0,1fr) 0px; gap:0; }
+  .live-head { display:flex; align-items:center; gap:12px; margin-bottom:18px; flex-wrap:wrap; }
+  .live-head h2 { font:700 22px/1.2 var(--display); letter-spacing:-.01em; margin:0; }
+  .live-head small { font-size:13px; }
+  .kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-bottom:18px; }
+  .kpi { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-m); padding:14px 16px; min-width:0; }
+  .kpi span { display:block; font-size:12px; color:var(--muted); font-weight:500; }
+  .kpi b { display:block; font:700 26px/1.2 var(--display); font-variant-numeric:tabular-nums; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .kpi.ok b { color:var(--ok); } .kpi.bad b { color:var(--err); } .kpi.bad.zero b { color:var(--text); }
+  .kpi.title b { font-size:15px; line-height:1.5; margin-top:8px; font-family:var(--font); font-weight:600; }
+  .lv-panel { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-m); padding:16px 18px; margin-bottom:18px; }
+  .lv-panel .lv-row { display:flex; align-items:center; gap:12px; }
+  .lv-panel .lv-row .grow b { font-weight:600; }
+  .clips { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; }
+  .clip { background:var(--surface); border:1px solid var(--line); border-radius:var(--r-m); overflow:hidden; display:flex; flex-direction:column; min-width:0; }
+  .clip .lv-thumb { position:relative; aspect-ratio:16/9; background:var(--field); display:grid; place-items:center; overflow:hidden; }
+  .clip .lv-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+  .clip .time { position:absolute; left:8px; top:8px; background:rgba(0,0,0,.72); padding:2px 8px; border-radius:6px; font:700 12px/1.6 var(--font); font-variant-numeric:tabular-nums; }
+  .clip .lv-chip { position:absolute; right:8px; top:8px; padding:2px 8px; border-radius:99px; font:600 11px/1.6 var(--font); background:rgba(0,0,0,.72); color:var(--muted); }
+  .clip.done .lv-chip { color:var(--ok); } .clip.error .lv-chip { color:var(--err); } .clip.downloading .lv-chip { color:var(--accent); }
+  .clip.downloading .lv-thumb::after { content:""; position:absolute; inset:0; background:linear-gradient(100deg,transparent 30%,rgba(255,122,0,.16) 50%,transparent 70%); background-size:220% 100%; animation:sweep 1.3s linear infinite; }
+  @keyframes sweep { from { background-position:120% 0; } to { background-position:-120% 0; } }
+  .clip .lv-thumb .ph { color:var(--faint); font-size:12px; padding:0 14px; text-align:center; }
+  .clip.error .lv-thumb .ph { color:var(--err); }
+  .clip .meta { padding:10px 12px 12px; display:flex; flex-direction:column; gap:8px; }
+  .clip .meta small { display:block; word-break:break-all; }
+  .clip .acts { display:flex; gap:8px; }
+  .clip .acts button, .clip .acts a { flex:1; }
+  .clip .acts a { display:inline-grid; place-items:center; height:34px; border:1px solid var(--line-2); border-radius:var(--r-s); color:var(--text); text-decoration:none; font-size:13px; font-weight:500; }
+  .clip .acts a:hover { background:var(--surface-2); border-color:#4a4a55; }
+  .clip .acts button { height:34px; padding:0 10px; font-size:13px; }
+  .empty { grid-column:1/-1; border:1px dashed var(--line-2); border-radius:var(--r-m); padding:44px 20px; text-align:center; color:var(--muted); }
+  .empty b { display:block; color:var(--text); font:700 17px/1.4 var(--display); margin-bottom:4px; }
+  .drawer { position:sticky; top:16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-l); padding:20px; overflow:hidden; min-width:0; opacity:1; transition:opacity .2s var(--ease), padding .25s var(--ease), border-width .25s; }
+  .live-body.closed .drawer { opacity:0; padding:0; border-width:0; pointer-events:none; }
+  .drawer h3 { font:700 17px/1.3 var(--display); margin:0 0 4px; }
+  .drawer .lv-hint { color:var(--muted); font-size:12.5px; margin:0 0 4px; }
+  .drawer label:first-of-type { margin-top:14px; }
+  .drawer textarea { min-height:120px; }
+  .drawer .go { width:100%; height:44px; margin-top:18px; }
+  .drawer .close { margin-left:auto; }
+  .drawer .head { display:flex; align-items:flex-start; gap:10px; }
+  @media (max-width:1020px) {
+    .live { padding:20px 16px 48px; }
+    .live-body, .live-body.closed { display:block; }
+    .drawer { position:fixed; z-index:20; right:0; top:0; bottom:0; width:min(400px,92vw); border-radius:0; transform:translateX(0); transition:transform .25s var(--ease); box-shadow:-20px 0 60px rgba(0,0,0,.5); overflow:auto; }
+    .live-body.closed .drawer { transform:translateX(105%); opacity:1; padding:20px; border-width:1px; }
+    .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .tabs { margin-left:0; }
+  }
+  .batch { margin-bottom:26px; }
+  .batch-head { display:flex; align-items:center; gap:12px; margin-bottom:10px; flex-wrap:wrap; }
+  .batch-head .t { min-width:0; flex:1 1 240px; }
+  .batch-head .t b { display:block; font:600 14px/1.4 var(--font); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .batch-head progress { flex:0 1 200px; margin:0; }
+  .batch-head button { height:30px; }
+  .batch .err { margin:0 0 10px; }
 </style>
 </head>
 <body>
 <header class="top">
   <div class="brand"><span class="mark" aria-hidden="true"></span><h1>Clipmaker</h1></div>
   <span class="tagline">clip horizontal → vertical con plantilla</span>
+  <nav class="tabs" role="tablist" aria-label="Secciones">
+    <button role="tab" id="tab-edit" data-view="edit" aria-selected="true">Montaje</button>
+    <button role="tab" id="tab-live" data-view="live" aria-selected="false">Directos<span class="dot" id="live-dot" hidden></span></button>
+  </nav>
   <span class="grow"></span>
   <span id="ver"></span>
   <button class="ghost" id="quit" title="Cierra Clipmaker por completo">Cerrar Clipmaker</button>
@@ -377,6 +450,42 @@
     </section>
   </aside>
 </main>
+
+<div id="view-live" class="live" role="tabpanel" aria-labelledby="tab-live" hidden>
+  <div class="live-body" id="live-body">
+    <div class="live-main">
+      <div class="live-head">
+        <h2>Directos</h2><small>descarga los minutos que quieras de un VOD</small>
+        <span class="grow"></span>
+        <button class="ghost" id="drawer-toggle" aria-expanded="true" aria-controls="drawer">Ocultar panel</button>
+      </div>
+      <div class="kpis">
+        <div class="kpi title"><span>Directo</span><b id="k-title">—</b></div>
+        <div class="kpi"><span>Pedidos</span><b id="k-total">0</b></div>
+        <div class="kpi ok"><span>Descargados</span><b id="k-done">0</b></div>
+        <div class="kpi bad zero" id="k-bad-box"><span>Con error</span><b id="k-bad">0</b></div>
+      </div>
+      <div id="batches" aria-live="polite">
+        <div class="clips"><div class="empty"><b>Aún no hay descargas</b>Pega el link de un directo y los minutos en el panel de la derecha. Puedes lanzar varias tandas a la vez.</div></div>
+      </div>
+    </div>
+    <aside class="drawer" id="drawer" aria-label="Nueva descarga">
+      <div class="head"><div><h3>Nueva descarga</h3><p class="lv-hint">Un clip por cada minuto de la lista.</p></div>
+        <button class="ghost close" id="drawer-close" aria-label="Ocultar panel">✕</button></div>
+      <label for="live-url">Link del directo o VOD</label>
+      <input type="text" id="live-url" placeholder="https://www.twitch.tv/videos/…" autocomplete="off" spellcheck="false">
+      <label for="live-marks">Minutos a descargar</label>
+      <textarea id="live-marks" placeholder="12&#10;45:30&#10;1:05:10" spellcheck="false"></textarea>
+      <small style="display:block;margin-top:6px">Separados por coma, espacio o línea. <b>12</b> = minuto 12 · <b>45:30</b> = 45 min 30 s · <b>1:05:10</b> = 1 h 5 min 10 s.</small>
+      <label for="live-len">Duración de cada clip</label>
+      <select id="live-len"><option value="30">30 segundos</option><option value="60" selected>1 minuto</option><option value="90">1 min 30 s</option><option value="120">2 minutos</option></select>
+      <button class="go" id="live-go">Descargar clips</button>
+      <button class="go ghost" id="live-new" hidden>Nueva descarga</button>
+      <div class="status" id="live-msg" role="status"></div>
+      <small style="display:block;margin-top:10px">Además de verlos aquí, se guardan en <b>Descargas › Clipmaker directos</b>. Funciona con VODs de Twitch, Kick y YouTube; un directo en vivo hay que bajarlo cuando termine.</small>
+    </aside>
+  </div>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -632,20 +741,25 @@ $('stage').addEventListener('pointerup', () => {
 });
 document.querySelectorAll('input[name=tool]').forEach(r => r.onchange = () => { tool = r.value; });
 
+async function adoptJob(j, name) {
+  job = j;
+  $('drop').textContent = `${name} · ${job.width}×${job.height} · ${job.duration}s`;
+  $('drop').classList.add('has');
+  $('frame').src = job.frame + '?t=' + Date.now();
+  $('stage').style.display = 'block';
+  $('camhint').textContent = 'Arrastra sobre la imagen para dibujar el recuadro. Elige arriba si dibujas la cámara (rojo) o el gameplay (verde).';
+  extras.image = extras.clip_b = false;
+  msg('Clip listo.', 'ok', 'clip');
+  for (const k of ['image', 'clip_b']) if (extraFiles[k]) await attach(k, extraFiles[k], true);
+}
+
 async function upload(file) {
   msg('Subiendo clip…', '', 'clip');
   const fd = new FormData(); fd.append('clip', file);
   try {
-    job = await xhrPost('/api/upload', fd, 'Subiendo clip…', 'clip');
+    const j = await xhrPost('/api/upload', fd, 'Subiendo clip…', 'clip');
     setBar(null, 'clip');
-    $('drop').textContent = `${file.name} · ${job.width}×${job.height} · ${job.duration}s`;
-    $('drop').classList.add('has');
-    $('frame').src = job.frame + '?t=' + Date.now();
-    $('stage').style.display = 'block';
-    $('camhint').textContent = 'Arrastra sobre la imagen para dibujar el recuadro. Elige arriba si dibujas la cámara (rojo) o el gameplay (verde).';
-    extras.image = extras.clip_b = false;
-    msg('Clip listo.', 'ok', 'clip');
-    for (const k of ['image', 'clip_b']) if (extraFiles[k]) await attach(k, extraFiles[k], true);
+    await adoptJob(j, file.name);
   } catch (e) { job = null; setBar(null, 'clip'); msg(e.message, 'err', 'clip'); }
   refreshGo(); schedulePreview();
 }
@@ -889,6 +1003,173 @@ async function updateFlow() {
     Object.entries(accounts).forEach(([k, v]) => $('account').add(new Option(v.handle, k)));
     renderPeople();
   } catch (e) { msg(e.message, 'err'); }
+})();
+
+/* ───────── Pestañas y sección Directos ───────── */
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+function showView(v) {
+  const live = v === 'live';
+  document.querySelector('main').hidden = live;
+  $('view-live').hidden = !live;
+  $('tab-edit').setAttribute('aria-selected', String(!live));
+  $('tab-live').setAttribute('aria-selected', String(live));
+  store.set('cm_view', v);
+}
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => showView(b.dataset.view));
+
+function setDrawer(open) {
+  $('live-body').classList.toggle('closed', !open);
+  $('drawer-toggle').textContent = open ? 'Ocultar panel' : 'Nueva descarga';
+  $('drawer-toggle').setAttribute('aria-expanded', String(open));
+  store.set('cm_drawer', open ? '1' : '0');
+}
+$('drawer-toggle').onclick = () => setDrawer($('live-body').classList.contains('closed'));
+$('drawer-close').onclick = () => setDrawer(false);
+
+const LIVE_MAX_KEPT = 8;
+let liveTasks = [], liveData = {}, liveTimer = null;
+const liveSave = () => store.set('cm_live_tasks', JSON.stringify(liveTasks));
+const isActive = d => d && (d.state === 'probing' || d.state === 'running');
+const STATE_TXT = { pending: 'En cola', downloading: 'Descargando…', done: 'Listo', error: 'Error', cancelled: 'Cancelado' };
+
+function clipCard(it) {
+  const c = document.createElement('div'); c.className = 'clip ' + it.state;
+  const th = document.createElement('div'); th.className = 'lv-thumb';
+  if (it.state === 'done') { const im = document.createElement('img'); im.src = it.frame; im.alt = 'Frame del minuto ' + it.label; th.append(im); }
+  else {
+    const ph = document.createElement('div'); ph.className = 'ph';
+    ph.textContent = it.state === 'error' ? (it.error || 'Error') : it.state === 'downloading' ? 'Descargando tramo…' : STATE_TXT[it.state];
+    th.append(ph);
+  }
+  const t = document.createElement('span'); t.className = 'time'; t.textContent = it.label; th.append(t);
+  const ch = document.createElement('span'); ch.className = 'lv-chip'; ch.textContent = STATE_TXT[it.state] || it.state; th.append(ch);
+  c.append(th);
+  if (it.state === 'done') {
+    const m = document.createElement('div'); m.className = 'meta';
+    const info = document.createElement('small'); info.textContent = `${it.width}×${it.height} · ${it.duration}s`; m.append(info);
+    const acts = document.createElement('div'); acts.className = 'acts';
+    const use = document.createElement('button'); use.textContent = 'Usar en el editor';
+    use.onclick = async () => {
+      use.disabled = true;
+      await adoptJob({ id: it.id, width: it.width, height: it.height, duration: it.duration, frame: it.frame }, `Directo ${it.label}`);
+      refreshGo(); schedulePreview(); showView('edit'); window.scrollTo(0, 0);
+      use.disabled = false;
+    };
+    const dl = document.createElement('a'); dl.href = '/api/live-clips/file/' + it.id; dl.textContent = 'Descargar';
+    acts.append(use, dl); m.append(acts); c.append(m);
+  }
+  return c;
+}
+
+function batchEl(id, d) {
+  const items = d.items || [];
+  const sec = document.createElement('section'); sec.className = 'batch';
+  const head = document.createElement('div'); head.className = 'batch-head';
+  const t = document.createElement('div'); t.className = 't';
+  const tb = document.createElement('b'); tb.textContent = d.title || (isActive(d) ? 'Leyendo el directo…' : 'Directo');
+  const ts = document.createElement('small');
+  const finished = items.filter(i => i.state !== 'pending' && i.state !== 'downloading').length;
+  ts.textContent = d.state === 'probing' ? 'Leyendo el directo…'
+    : d.state === 'running' ? `Descargando clips (${finished}/${items.length})`
+    : d.state === 'cancelled' ? 'Cancelada' : d.state === 'error' ? 'No se pudo descargar'
+    : `Terminada · ${items.filter(i => i.state === 'done').length}/${items.length} clips`;
+  t.append(tb, ts); head.append(t);
+  if (isActive(d)) {
+    const bar = document.createElement('progress'); bar.max = 100;
+    if (d.state === 'running') bar.value = items.length ? Math.round(finished / items.length * 100) : 0;
+    head.append(bar);
+    const cb = document.createElement('button'); cb.className = 'ghost'; cb.textContent = 'Cancelar';
+    cb.onclick = async () => { cb.disabled = true; try { await postJson('/api/live-clips/cancel/' + id, {}); } catch {} };
+    head.append(cb);
+  } else {
+    const rb = document.createElement('button'); rb.className = 'ghost'; rb.textContent = 'Quitar';
+    rb.onclick = () => { liveTasks = liveTasks.filter(x => x !== id); delete liveData[id]; liveSave(); renderLive(); };
+    head.append(rb);
+  }
+  sec.append(head);
+  if (d.state === 'error' && d.error) { const e = document.createElement('div'); e.className = 'status err'; e.setAttribute('role', 'alert'); e.textContent = d.error; sec.append(e); }
+  const grid = document.createElement('div'); grid.className = 'clips';
+  items.forEach(it => grid.append(clipCard(it)));
+  sec.append(grid);
+  return sec;
+}
+
+function renderLive() {
+  const all = liveTasks.map(id => liveData[id]).filter(Boolean);
+  const items = all.flatMap(d => d.items || []);
+  const bad = items.filter(i => i.state === 'error').length;
+  const active = all.filter(isActive).length;
+  const titles = [...new Set(all.map(d => d.title).filter(Boolean))];
+  $('k-title').textContent = titles.length > 1 ? `${titles.length} directos` : titles[0] || (active ? 'Leyendo el directo…' : '—');
+  $('k-title').title = titles.join(' · ');
+  $('k-total').textContent = items.length;
+  $('k-done').textContent = items.filter(i => i.state === 'done').length;
+  $('k-bad').textContent = bad;
+  $('k-bad-box').classList.toggle('zero', bad === 0);
+  $('live-dot').hidden = !active;
+  const box = $('batches'); box.replaceChildren();
+  if (!all.length) {
+    box.innerHTML = '<div class="clips"><div class="empty"><b>Aún no hay descargas</b>Pega el link de un directo y los minutos en el panel de la derecha. Puedes lanzar varias tandas a la vez.</div></div>';
+    return;
+  }
+  liveTasks.forEach(id => { if (liveData[id]) box.append(batchEl(id, liveData[id])); });
+}
+
+async function pollLive() {
+  clearTimeout(liveTimer);
+  if (!liveTasks.length) return;
+  let removed = false, failed = false;
+  await Promise.all(liveTasks.map(async id => {
+    try { liveData[id] = await api('/api/live-clips/status/' + id); }
+    catch (e) { if (/404/.test(e.message)) { liveTasks = liveTasks.filter(x => x !== id); delete liveData[id]; removed = true; } else failed = true; }
+  }));
+  if (removed) liveSave();
+  renderLive();
+  if (failed || Object.values(liveData).some(isActive)) liveTimer = setTimeout(pollLive, failed ? 3000 : 1500);
+}
+
+$('live-go').onclick = async () => {
+  const lm = $('live-msg'); lm.textContent = ''; lm.className = 'status';
+  $('live-go').disabled = true;
+  try {
+    const r = await postJson('/api/live-clips/start', { url: $('live-url').value, marks: $('live-marks').value, duration: +$('live-len').value });
+    liveTasks.unshift(r.task);
+    liveTasks.length > LIVE_MAX_KEPT && liveTasks.splice(LIVE_MAX_KEPT).forEach(id => delete liveData[id]);
+    liveData[r.task] = { state: 'probing', items: r.items };
+    liveSave();
+    renderLive();
+    setLiveForm(false);
+    lm.textContent = 'Tanda iniciada. Pulsa "Nueva descarga" para lanzar otra.'; lm.className = 'status ok';
+    if (window.matchMedia('(max-width:1020px)').matches) setDrawer(false);
+    pollLive();
+  } catch (e) { lm.textContent = e.message; lm.className = 'status err'; $('live-go').disabled = false; }
+};
+
+// Tras iniciar una tanda el formulario queda bloqueado: solo "Nueva descarga" lo reinicia,
+// así no se puede lanzar dos veces lo mismo sin querer.
+function setLiveForm(enabled) {
+  ['live-url', 'live-marks', 'live-len'].forEach(id => { $(id).disabled = !enabled; });
+  $('live-go').disabled = !enabled;
+  $('live-go').hidden = !enabled;
+  $('live-new').hidden = enabled;
+}
+$('live-new').onclick = () => {
+  $('live-url').value = ''; $('live-marks').value = '';
+  $('live-msg').textContent = ''; $('live-msg').className = 'status';
+  setLiveForm(true);
+  $('live-url').focus();
+};
+
+(() => {
+  const wide = !window.matchMedia('(max-width:1020px)').matches;
+  setDrawer(store.get('cm_drawer') === null ? wide : store.get('cm_drawer') === '1');
+  try { liveTasks = JSON.parse(store.get('cm_live_tasks') || '[]').filter(x => /^[0-9a-f]{32}$/.test(x)).slice(0, LIVE_MAX_KEPT); } catch { liveTasks = []; }
+  if (liveTasks.length) pollLive();
+  if (store.get('cm_view') === 'live') showView('live');
 })();
 </script>
 </body>

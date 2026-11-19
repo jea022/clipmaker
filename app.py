@@ -17,6 +17,7 @@ from flask import Flask, Response, abort, jsonify, request, send_from_directory
 import captions
 import clipmaker
 import publish_youtube
+import streamclips
 import updater
 
 HERE = Path(__file__).parent
@@ -470,6 +471,131 @@ def api_update_apply():
         return jsonify(error="No pude actualizar. Tu versión sigue intacta."), 500
     threading.Timer(1.0, lambda: os._exit(RESTART_CODE)).start()
     return jsonify(result)
+
+
+LIVE_TASKS = {}
+LIVE_DIR = Path.home() / "Downloads" / "Clipmaker directos"
+MAX_LIVE_TASKS = 3  # tandas descargando a la vez
+
+
+def _slug(text, n=40):
+    text = re.sub(r"[^A-Za-z0-9]+", "-", str(text or "")).strip("-")
+    return (text[:n].strip("-") or "directo").lower()
+
+
+def _live_public(task):
+    return {"state": task["state"], "title": task.get("title"), "duration": task.get("total"),
+            "folder": str(LIVE_DIR), "error": task.get("error"), "items": task["items"]}
+
+
+def run_live_task(task, url, marks, length):
+    items = task["items"]
+    try:
+        task["state"] = "probing"
+        title, total = streamclips.probe(url)
+        task["title"], task["total"] = title, total
+        task["state"] = "running"
+        slug = _slug(title)
+        for it in items:
+            if task.get("cancel"):
+                it["state"] = "cancelled"
+                continue
+            if total and it["start"] >= total:
+                it.update(state="error", error=f"Ese minuto está fuera del video (dura {streamclips.fmt_mark(total)}).")
+                continue
+            end = min(it["start"] + length, total) if total else it["start"] + length
+            it["state"] = "downloading"
+            job_id = uuid.uuid4().hex
+            d = WORK / job_id
+            d.mkdir(parents=True)
+            try:
+                src = streamclips.download_range(url, it["start"], end, d, HERE / "bin")
+                if src.name != "source.mp4":
+                    src = src.rename(d / ("source" + src.suffix.lower()))
+                w, h = clipmaker.probe_size(src)
+                dur = clipmaker.probe_duration(src)
+                clipmaker.extract_frame(src, d / "frame.png")
+                LIVE_DIR.mkdir(parents=True, exist_ok=True)
+                dest = LIVE_DIR / f"{slug}_{it['start']//3600:d}h{it['start']%3600//60:02d}m{it['start']%60:02d}s{src.suffix.lower()}"
+                n = 2
+                while dest.exists():  # otra tanda del mismo directo: no pisar el archivo
+                    dest = dest.with_name(f"{dest.stem.rsplit('_v', 1)[0]}_v{n}{dest.suffix}")
+                    n += 1
+                shutil.copyfile(src, dest)
+                it.update(state="done", id=job_id, width=w, height=h, duration=round(dur, 2),
+                          frame=f"/media/{job_id}/frame.png", saved=str(dest))
+            except streamclips.StreamClipError as e:
+                shutil.rmtree(d, ignore_errors=True)
+                it.update(state="error", error=str(e))
+            except (subprocess.CalledProcessError, ValueError, OSError):
+                app.logger.exception("fallo procesando tramo de directo")
+                shutil.rmtree(d, ignore_errors=True)
+                it.update(state="error", error="No pude leer el tramo descargado.")
+        task["state"] = "cancelled" if task.get("cancel") else "done"
+    except streamclips.StreamClipError as e:
+        task.update(state="error", error=str(e))
+        for it in items:
+            if it["state"] == "pending":
+                it["state"] = "cancelled"
+    except Exception:
+        app.logger.exception("fallo en la descarga de directo")
+        task.update(state="error", error="Falló la descarga. Mira data/clipmaker.log.")
+
+
+@app.post("/api/live-clips/start")
+def api_live_start():
+    data = request.get_json(silent=True) or {}
+    try:
+        url = streamclips.check_url(data.get("url"))
+        marks = streamclips.parse_marks(data.get("marks"))
+        length = int(data.get("duration") or streamclips.DEFAULT_DURATION)
+    except streamclips.StreamClipError as e:
+        return jsonify(error=str(e)), 400
+    except (TypeError, ValueError):
+        return jsonify(error="La duración debe ser un número de segundos"), 400
+    if not streamclips.MIN_DURATION <= length <= streamclips.MAX_DURATION:
+        return jsonify(error=f"La duración debe estar entre {streamclips.MIN_DURATION} y {streamclips.MAX_DURATION} segundos"), 400
+    try:
+        import yt_dlp  # noqa: F401
+    except ImportError:
+        return jsonify(error="Falta yt-dlp: cierra y abre Clipmaker para que se instale."), 500
+    with TASKS_LOCK:
+        cleanup_old_jobs()
+        for tid in [t for t, v in LIVE_TASKS.items() if time.time() - v["created"] > 6 * 3600 and v["state"] not in ("probing", "running")]:
+            LIVE_TASKS.pop(tid, None)
+        if sum(v["state"] in ("probing", "running") for v in LIVE_TASKS.values()) >= MAX_LIVE_TASKS:
+            return jsonify(error=f"Ya hay {MAX_LIVE_TASKS} descargas en curso: espera a que termine alguna o cancélala"), 409
+        tid = uuid.uuid4().hex
+        task = LIVE_TASKS[tid] = {"state": "probing", "created": time.time(), "url": url, "length": length,
+                                  "items": [{"label": streamclips.fmt_mark(m), "start": m, "state": "pending"} for m in marks]}
+    threading.Thread(target=run_live_task, args=(task, url, marks, length), daemon=True).start()
+    return jsonify(task=tid, items=task["items"])
+
+
+@app.get("/api/live-clips/status/<task_id>")
+def api_live_status(task_id):
+    task = LIVE_TASKS.get(task_id)
+    if not ID_RE.match(task_id) or task is None:
+        abort(404)
+    return jsonify(_live_public(task))
+
+
+@app.post("/api/live-clips/cancel/<task_id>")
+def api_live_cancel(task_id):
+    task = LIVE_TASKS.get(task_id)
+    if not ID_RE.match(task_id) or task is None:
+        abort(404)
+    task["cancel"] = True
+    return jsonify(ok=True)
+
+
+@app.get("/api/live-clips/file/<job_id>")
+def api_live_file(job_id):
+    d = job_dir(job_id)
+    src = next(iter(sorted(d.glob("source.*"))), None)
+    if src is None:
+        abort(404)
+    return send_from_directory(d, src.name, as_attachment=True, download_name=f"clip_directo{src.suffix}")
 
 
 @app.get("/api/ping")
