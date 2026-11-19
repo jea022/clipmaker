@@ -76,26 +76,8 @@ check("render sin camara", r.status_code == 200)
 
 from unittest import mock
 
-def pub(**kw):
-    body = {"id": jid, "title": "Hola", "account": "wganga", "people": ["westcol"], "privacy": "private"}
-    body.update(kw)
-    return c.post("/api/publish-youtube", json=body)
-
-check("publish privacidad publica bloqueada", pub(privacy="public").status_code == 400)
-check("publish sin titulo", pub(title="").status_code == 400)
-check("publish cuenta mala", pub(account="x").status_code == 400)
+check("ya no hay subida a YouTube desde la web", c.post("/api/publish-youtube", json={"id": jid}).status_code in (404, 405))
 fresh = upload(good).json["id"]
-check("publish sin video creado", pub(id=fresh).status_code == 400)
-with mock.patch.object(webapp.publish_youtube, "upload", return_value="VID9") as up:
-    r = pub()
-    check("publish ok (simulado)", r.status_code == 200 and r.json["url"].endswith("/VID9"), r.status_code)
-    check("publish usa privado", up.call_args.args[2]["status"]["privacyStatus"] == "private")
-with mock.patch.object(webapp.publish_youtube, "upload", side_effect=FileNotFoundError("Falta client_secret.json")):
-    r = pub()
-    check("publish sin credenciales -> 400 claro", r.status_code == 400 and "client_secret" in r.json["error"])
-with mock.patch.object(webapp.publish_youtube, "upload", side_effect=RuntimeError("boom con datos internos")):
-    r = pub()
-    check("publish error interno no filtra detalles", r.status_code == 502 and "boom" not in r.json["error"])
 
 # ---- variaciones: imagen / segundo video ----
 from PIL import Image
@@ -431,16 +413,10 @@ cust = c.post("/api/render", json={"id": jid, "title": "x", "account": "wganga",
 check("render: usa la lista personalizada", cust["hashtags"][:2] == ["#propio1", "#ana1"] and len(cust["hashtags"]) == 3, cust["hashtags"])
 c.post("/api/hashtags", json={"account": "wganga", "reset": True})
 
-# YouTube usa el mismo reparto que se vio en pantalla
-with mock.patch.object(webapp.publish_youtube, "upload", return_value="VIDH") as up_mock:
-    pr = c.post("/api/publish-youtube", json={"id": jid, "title": "Hola", "account": "wganga", "people": ["westcol"], "cursor": 4, "clip_game": "gta6"})
-    sent = up_mock.call_args.args[2] if up_mock.called else {}
-    want = _captions.generate("wganga", "Hola", ["westcol"], 4, "gta6")
-    check("publicar: YouTube usa el mismo reparto (mismo clip) que el caption", pr.status_code == 200 and sent["snippet"]["tags"] == [t.lstrip("#") for t in want["yt_hashtags"]], sent.get("snippet", {}).get("tags"))
-    check("publicar: la descripcion lleva los mismos hashtags", all(t in sent["snippet"]["description"] for t in want["yt_hashtags"]))
-    check("publicar: juego invalido -> 400", c.post("/api/publish-youtube", json={"id": jid, "title": "Hola", "account": "wganga", "clip_game": "x"}).status_code == 400)
-    pr2 = c.post("/api/publish-youtube", json={"id": jid, "title": "Hola", "account": "wganga", "cursor": "x"})
-    check("publicar: cursor basura se trata como 0", pr2.status_code == 200)
+# los textos para copiar: TikTok/Instagram (mismo caption) y YouTube Shorts (titulo + descripcion)
+cap_ok = c.post("/api/render", json={"id": jid, "title": "Hola", "account": "wganga", "people": ["westcol"]}).json["captions"]
+check("captions: caption TikTok/IG con hashtags", cap_ok["tiktok_caption"].endswith(" ".join(cap_ok["hashtags"])))
+check("captions: titulo y descripcion de Shorts", cap_ok["yt_title"] and all(t in cap_ok["yt_description"] for t in cap_ok["yt_hashtags"]))
 
 # ---- ping y cierre (los usa el lanzador) ----
 import os as _os
