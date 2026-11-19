@@ -12,7 +12,7 @@ import time
 import uuid
 from pathlib import Path
 
-from flask import Flask, abort, jsonify, request, send_from_directory
+from flask import Flask, Response, abort, jsonify, request, send_from_directory
 
 import captions
 import clipmaker
@@ -38,12 +38,19 @@ WORK.mkdir(exist_ok=True)
 app.json.sort_keys = False
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024 * 1024
 
+# Numero de secuencia de la ultima peticion de vista previa por trabajo: si cuando
+# terminamos de montarla ya hay una mas nueva en curso, la descartamos (409) en vez
+# de devolver una vista previa que ya no corresponde a lo que se ve en pantalla.
+PREVIEW_SEQ = {}
+PREVIEW_SEQ_LOCK = threading.Lock()
+
 
 def cleanup_old_jobs(max_age_hours=24):
     cutoff = time.time() - max_age_hours * 3600
     for d in WORK.glob("*"):
         if d.is_dir() and ID_RE.match(d.name) and d.stat().st_mtime < cutoff:
             shutil.rmtree(d, ignore_errors=True)
+            PREVIEW_SEQ.pop(d.name, None)
 
 
 def job_dir(job_id):
@@ -501,14 +508,36 @@ def api_preview():
     p, err = prepare_render(data)
     if err:
         return err
-    still = p["d"] / "preview.png"
-    with PREVIEW_LOCK:
-        try:
-            clipmaker.build(p["src"], p["title"], p["cfg"], still, p["no_cam"], p["preset"], p["clip_b"],
-                            p["image"], p["audio"], still=True)
-        except subprocess.CalledProcessError:
-            return jsonify(error="No pude generar la vista previa"), 500
-    resp = send_from_directory(p["d"], "preview.png", mimetype="image/png")
+
+    job_id = p["d"].name
+    with PREVIEW_SEQ_LOCK:
+        my_seq = PREVIEW_SEQ.get(job_id, 0) + 1
+        PREVIEW_SEQ[job_id] = my_seq
+
+    def stale():
+        return PREVIEW_SEQ.get(job_id) != my_seq
+
+    if stale():
+        return "", 409
+
+    still = p["d"] / f"preview_{uuid.uuid4().hex}.png"
+    try:
+        with PREVIEW_LOCK:
+            # mientras esperabamos nuestro turno llego una peticion mas nueva: no
+            # tiene sentido gastar tiempo de ffmpeg en una vista previa ya obsoleta
+            if stale():
+                return "", 409
+            try:
+                clipmaker.build(p["src"], p["title"], p["cfg"], still, p["no_cam"], p["preset"], p["clip_b"],
+                                p["image"], p["audio"], still=True)
+            except subprocess.CalledProcessError:
+                return jsonify(error="No pude generar la vista previa"), 500
+        if stale():
+            return "", 409
+        img_bytes = still.read_bytes()
+    finally:
+        still.unlink(missing_ok=True)
+    resp = Response(img_bytes, mimetype="image/png")
     resp.headers["Cache-Control"] = "no-store"
     return resp
 
@@ -560,4 +589,4 @@ if __name__ == "__main__":
     if port_busy(port):
         sys.exit(f"No pude abrir el puerto {port}: ya lo usa otro programa.\n"
                  f"En Mac suele ser AirPlay Receiver (usa el 5000). Prueba con otro puerto: ./run.sh 5055")
-    app.run(host="127.0.0.1", port=port, debug=False)
+    app.run(host="127.0.0.1", port=port, debug=False, threaded=True)

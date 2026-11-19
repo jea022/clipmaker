@@ -10,6 +10,7 @@ import sys
 import tempfile
 import threading
 import unicodedata
+from datetime import datetime
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -17,6 +18,26 @@ from PIL import Image, ImageDraw, ImageFont
 _LOCAL_BIN = Path(__file__).parent / "bin"
 if _LOCAL_BIN.is_dir():
     os.environ["PATH"] = str(_LOCAL_BIN) + os.pathsep + os.environ.get("PATH", "")
+
+FFMPEG_ERROR_LOG = Path(__file__).parent / "data" / "ffmpeg_errors.log"
+
+
+def _low_priority_kwargs():
+    """Argumentos extra para que ffmpeg monte el video sin robarle CPU al resto del sistema."""
+    if os.name == "nt":
+        return {"creationflags": getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)}
+    return {"preexec_fn": lambda: os.nice(10)}
+
+
+def log_ffmpeg_error(cmd, lines):
+    """Guarda el error de ffmpeg en un log aparte; si no se puede escribir, no interrumpe el montaje."""
+    try:
+        FFMPEG_ERROR_LOG.parent.mkdir(exist_ok=True)
+        with FFMPEG_ERROR_LOG.open("a", encoding="utf-8") as f:
+            f.write(f"\n[{datetime.now().isoformat(timespec='seconds')}] {' '.join(cmd)}\n")
+            f.write("\n".join(lines[-20:]) + "\n")
+    except OSError:
+        pass
 
 
 def resolve(p):
@@ -285,7 +306,8 @@ def apply_overrides(cfg, cam=None, game=None, title_height=None, font_size=None,
 def run_ffmpeg(cmd, duration, progress_cb=None):
     """Ejecuta ffmpeg informando el progreso y matandolo si se cuelga."""
     limit = max(120, duration * 30)
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace",
+                             **_low_priority_kwargs())
     timer = threading.Timer(limit, proc.kill)
     timer.start()
     errors = []
@@ -303,6 +325,7 @@ def run_ffmpeg(cmd, duration, progress_cb=None):
     if proc.returncode != 0:
         if errors:
             print("\n".join(errors[-5:]), file=sys.stderr)
+            log_ffmpeg_error(cmd, errors)
         raise subprocess.CalledProcessError(proc.returncode if proc.returncode > 0 else 124, cmd)
     if progress_cb:
         progress_cb(1.0)
